@@ -14,6 +14,7 @@ import Lotes from "./pages/Lotes";
 import Documentos from "./pages/Documentos";
 import CLG from "./pages/CLG";
 import Logs from "./pages/Logs";
+import Notificaciones from "./pages/Notificaciones";
 import PlaceholderModule from "./pages/PlaceholderModule";
 import NotFound from "./pages/NotFound";
 
@@ -89,10 +90,7 @@ const App = () => (
               path="/dashboard/notificaciones"
               element={
                 <DashboardLayout>
-                  <PlaceholderModule 
-                    title="Notificaciones" 
-                    description="Centro de notificaciones del sistema"
-                  />
+                  <Notificaciones />
                 </DashboardLayout>
               }
             />
