@@ -2,8 +2,13 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Index from "./pages/Index";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { DashboardLayout } from "@/components/DashboardLayout";
+import Login from "./pages/Login";
+import Dashboard from "./pages/Dashboard";
+import Usuarios from "./pages/Usuarios";
+import PlaceholderModule from "./pages/PlaceholderModule";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -14,11 +19,96 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <AuthProvider>
+          <Routes>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/login" element={<Login />} />
+            <Route
+              path="/dashboard"
+              element={
+                <DashboardLayout>
+                  <Dashboard />
+                </DashboardLayout>
+              }
+            />
+            <Route
+              path="/dashboard/usuarios"
+              element={
+                <DashboardLayout>
+                  <Usuarios />
+                </DashboardLayout>
+              }
+            />
+            <Route
+              path="/dashboard/expedientes"
+              element={
+                <DashboardLayout>
+                  <PlaceholderModule 
+                    title="Expedientes" 
+                    description="Gestiona los expedientes de clientes y lotes"
+                  />
+                </DashboardLayout>
+              }
+            />
+            <Route
+              path="/dashboard/pagos"
+              element={
+                <DashboardLayout>
+                  <PlaceholderModule 
+                    title="Pagos" 
+                    description="Administra los pagos y transacciones"
+                  />
+                </DashboardLayout>
+              }
+            />
+            <Route
+              path="/dashboard/documentos"
+              element={
+                <DashboardLayout>
+                  <PlaceholderModule 
+                    title="Documentos" 
+                    description="Gestiona la documentación del sistema"
+                  />
+                </DashboardLayout>
+              }
+            />
+            <Route
+              path="/dashboard/clg"
+              element={
+                <DashboardLayout>
+                  <PlaceholderModule 
+                    title="CLG" 
+                    description="Administra certificados CLG"
+                  />
+                </DashboardLayout>
+              }
+            />
+            <Route
+              path="/dashboard/notificaciones"
+              element={
+                <DashboardLayout>
+                  <PlaceholderModule 
+                    title="Notificaciones" 
+                    description="Centro de notificaciones del sistema"
+                  />
+                </DashboardLayout>
+              }
+            />
+            <Route
+              path="/dashboard/logs"
+              element={
+                <DashboardLayout>
+                  <PlaceholderModule 
+                    title="Logs del Sistema" 
+                    description="Historial de actividad y auditoría"
+                  />
+                </DashboardLayout>
+              }
+            />
+            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
