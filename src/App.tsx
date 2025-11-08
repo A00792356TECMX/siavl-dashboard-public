@@ -11,6 +11,7 @@ import Usuarios from "./pages/Usuarios";
 import Expedientes from "./pages/Expedientes";
 import Pagos from "./pages/Pagos";
 import Lotes from "./pages/Lotes";
+import Documentos from "./pages/Documentos";
 import PlaceholderModule from "./pages/PlaceholderModule";
 import NotFound from "./pages/NotFound";
 
@@ -70,10 +71,7 @@ const App = () => (
               path="/dashboard/documentos"
               element={
                 <DashboardLayout>
-                  <PlaceholderModule 
-                    title="Documentos" 
-                    description="Gestiona la documentación del sistema"
-                  />
+                  <Documentos />
                 </DashboardLayout>
               }
             />
