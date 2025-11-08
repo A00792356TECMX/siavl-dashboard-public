@@ -8,6 +8,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Usuarios from "./pages/Usuarios";
+import Expedientes from "./pages/Expedientes";
 import PlaceholderModule from "./pages/PlaceholderModule";
 import NotFound from "./pages/NotFound";
 
@@ -43,10 +44,7 @@ const App = () => (
               path="/dashboard/expedientes"
               element={
                 <DashboardLayout>
-                  <PlaceholderModule 
-                    title="Expedientes" 
-                    description="Gestiona los expedientes de clientes y lotes"
-                  />
+                  <Expedientes />
                 </DashboardLayout>
               }
             />
