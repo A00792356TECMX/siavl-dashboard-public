@@ -1,4 +1,4 @@
-import { Home, Users, FolderOpen, CreditCard, FileText, Shield, Bell, Activity, LogOut } from 'lucide-react';
+import { Home, Users, FolderOpen, CreditCard, MapPin, FileText, Shield, Bell, Activity, LogOut } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -21,6 +21,7 @@ const mainItems = [
   { title: 'Usuarios', url: '/dashboard/usuarios', icon: Users },
   { title: 'Expedientes', url: '/dashboard/expedientes', icon: FolderOpen },
   { title: 'Pagos', url: '/dashboard/pagos', icon: CreditCard },
+  { title: 'Lotes', url: '/dashboard/lotes', icon: MapPin },
 ];
 
 const systemItems = [

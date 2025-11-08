@@ -10,6 +10,7 @@ import Dashboard from "./pages/Dashboard";
 import Usuarios from "./pages/Usuarios";
 import Expedientes from "./pages/Expedientes";
 import Pagos from "./pages/Pagos";
+import Lotes from "./pages/Lotes";
 import PlaceholderModule from "./pages/PlaceholderModule";
 import NotFound from "./pages/NotFound";
 
@@ -54,6 +55,14 @@ const App = () => (
               element={
                 <DashboardLayout>
                   <Pagos />
+                </DashboardLayout>
+              }
+            />
+            <Route
+              path="/dashboard/lotes"
+              element={
+                <DashboardLayout>
+                  <Lotes />
                 </DashboardLayout>
               }
             />
