@@ -49,25 +49,44 @@ export const api = {
   },
 
   // Create a new record
-  create: <T>(table: string, data: any) => {
-    return apiRequest<T>(`/data/${table}`, {
+  create: async <T>(table: string, data: any) => {
+    const result = await apiRequest<T>(`/data/${table}`, {
       method: 'POST',
       body: data,
     });
+    
+    // Log the action
+    const { logAction } = await import('./logger');
+    const recordId = (result as any)?.objectId || 'unknown';
+    await logAction('crear', table, recordId, JSON.stringify(data));
+    
+    return result;
   },
 
   // Update a record
-  update: <T>(table: string, id: string, data: any) => {
-    return apiRequest<T>(`/data/${table}/${id}`, {
+  update: async <T>(table: string, id: string, data: any) => {
+    const result = await apiRequest<T>(`/data/${table}/${id}`, {
       method: 'PUT',
       body: data,
     });
+    
+    // Log the action
+    const { logAction } = await import('./logger');
+    await logAction('editar', table, id, JSON.stringify(data));
+    
+    return result;
   },
 
   // Delete a record
-  delete: (table: string, id: string) => {
-    return apiRequest(`/data/${table}/${id}`, {
+  delete: async (table: string, id: string) => {
+    const result = await apiRequest(`/data/${table}/${id}`, {
       method: 'DELETE',
     });
+    
+    // Log the action
+    const { logAction } = await import('./logger');
+    await logAction('eliminar', table, id);
+    
+    return result;
   },
 };

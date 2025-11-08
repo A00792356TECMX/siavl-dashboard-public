@@ -60,6 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUserToken(data['user-token']);
       localStorage.setItem('userToken', data['user-token']);
       localStorage.setItem('user', JSON.stringify(data));
+      localStorage.setItem('userEmail', data.email || email);
       
       toast.success('¡Bienvenido a SIAVL!');
       navigate('/dashboard');
@@ -75,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUserToken(null);
     localStorage.removeItem('userToken');
     localStorage.removeItem('user');
+    localStorage.removeItem('userEmail');
     toast.info('Sesión cerrada');
     navigate('/login');
   };

@@ -13,6 +13,7 @@ import Pagos from "./pages/Pagos";
 import Lotes from "./pages/Lotes";
 import Documentos from "./pages/Documentos";
 import CLG from "./pages/CLG";
+import Logs from "./pages/Logs";
 import PlaceholderModule from "./pages/PlaceholderModule";
 import NotFound from "./pages/NotFound";
 
@@ -99,10 +100,7 @@ const App = () => (
               path="/dashboard/logs"
               element={
                 <DashboardLayout>
-                  <PlaceholderModule 
-                    title="Logs del Sistema" 
-                    description="Historial de actividad y auditoría"
-                  />
+                  <Logs />
                 </DashboardLayout>
               }
             />
