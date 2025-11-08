@@ -9,6 +9,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Usuarios from "./pages/Usuarios";
 import Expedientes from "./pages/Expedientes";
+import Pagos from "./pages/Pagos";
 import PlaceholderModule from "./pages/PlaceholderModule";
 import NotFound from "./pages/NotFound";
 
@@ -52,10 +53,7 @@ const App = () => (
               path="/dashboard/pagos"
               element={
                 <DashboardLayout>
-                  <PlaceholderModule 
-                    title="Pagos" 
-                    description="Administra los pagos y transacciones"
-                  />
+                  <Pagos />
                 </DashboardLayout>
               }
             />
