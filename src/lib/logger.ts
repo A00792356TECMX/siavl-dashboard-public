@@ -4,7 +4,7 @@ interface LogEntry {
   registroId: string;
   usuario: string;
   detalles: string;
-  fecha: number;
+  fecha: string;
 }
 
 const API_BASE_URL = 'https://api.backendless.com/5D4E4322-AD40-411D-BA2E-627770DB2B73/C2FF6422-711C-449C-BB07-646A3F037CC5';
@@ -25,7 +25,7 @@ export async function logAction(
       registroId: recordId,
       usuario: userEmail,
       detalles: details,
-      fecha: Date.now(),
+      fecha: new Date().toISOString(),
     };
 
     // Don't log actions on the Logs table to avoid infinite loops
