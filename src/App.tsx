@@ -12,6 +12,7 @@ import Expedientes from "./pages/Expedientes";
 import Pagos from "./pages/Pagos";
 import Lotes from "./pages/Lotes";
 import Documentos from "./pages/Documentos";
+import CLG from "./pages/CLG";
 import PlaceholderModule from "./pages/PlaceholderModule";
 import NotFound from "./pages/NotFound";
 
@@ -79,10 +80,7 @@ const App = () => (
               path="/dashboard/clg"
               element={
                 <DashboardLayout>
-                  <PlaceholderModule 
-                    title="CLG" 
-                    description="Administra certificados CLG"
-                  />
+                  <CLG />
                 </DashboardLayout>
               }
             />
