@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface Usuario {
   objectId: string;
@@ -91,7 +92,17 @@ export default function Usuarios() {
       });
       toast.success('Usuario actualizado correctamente');
     } else {
-      // 🆕 Create new user
+      // 🆕 Create new user - Validate email doesn't exist
+      const existingUser = usuarios.find(
+        (u) => u.email.toLowerCase() === newUser.email.toLowerCase()
+      );
+
+      if (existingUser) {
+        toast.error('Ya existe un usuario con este correo electrónico');
+        setIsCreating(false);
+        return;
+      }
+
       await api.create('Usuarios', {
         email: newUser.email,
         nombre: newUser.name || null,
@@ -102,6 +113,10 @@ export default function Usuarios() {
       toast.success('Usuario creado correctamente');
     }
 
+    // Reload the users list before closing the dialog
+    await loadUsuarios();
+
+    // Reset form and close dialog
     setNewUser({
       email: '',
       name: '',
@@ -111,13 +126,12 @@ export default function Usuarios() {
     });
     setSelectedUser(null);
     setIsEditing(false);
-    loadUsuarios();
+    setIsDialogOpen(false);
   } catch (error) {
     console.error('Error guardando usuario:', error);
     toast.error('Error al guardar usuario');
   } finally {
     setIsCreating(false);
-    setIsDialogOpen(false); // if you added the close modal state earlier
   }
 };
   return (
@@ -131,7 +145,20 @@ export default function Usuarios() {
         </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
   <DialogTrigger asChild>
-    <Button className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-md">
+    <Button
+      className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-md"
+      onClick={() => {
+        setIsEditing(false);
+        setSelectedUser(null);
+        setNewUser({
+          email: '',
+          name: '',
+          telefono: '',
+          rol: '',
+          activo: true,
+        });
+      }}
+    >
       <Plus className="h-4 w-4 mr-2" />
       Nuevo Usuario
     </Button>
@@ -172,11 +199,17 @@ export default function Usuarios() {
       </div>
       <div>
         <Label>Rol</Label>
-        <Input
-          placeholder="Admin, Cliente, etc."
+        <Select
           value={newUser.rol}
-          onChange={(e) => setNewUser({ ...newUser, rol: e.target.value })}
-         />
+          onValueChange={(value) => setNewUser({ ...newUser, rol: value })}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Seleccionar rol" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="Admin">Admin</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
       
       <div className="flex items-center gap-2">
