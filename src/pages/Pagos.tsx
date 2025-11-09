@@ -1,223 +1,329 @@
-import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Pencil, Trash2, Loader2, CreditCard } from 'lucide-react';
-import { api } from '@/lib/api';
-import { useToast } from '@/hooks/use-toast';
-import { PagoForm } from '@/components/PagoForm';
+import { useEffect, useState } from "react";
+import { useForm, Controller } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+  Form,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+  FormControl,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Loader2 } from "lucide-react";
+import { api } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
 
-interface Pago {
+// ✅ Schema aligned with Backendless
+const pagoSchema = z.object({
+  folioExpediente: z.string().min(1, "Folio requerido"),
+  monto: z
+    .string()
+    .min(1, "Monto requerido")
+    .refine(
+      (val) => !isNaN(parseFloat(val)) && parseFloat(val) > 0,
+      "Debe ser un monto válido mayor a 0"
+    ),
+  metodoPago: z.string().nonempty("Método de pago requerido"),
+  moneda: z.string().nonempty("Moneda requerida"),
+  referencia: z.string().optional(),
+  relacionExpedientes: z.string().optional(),
+  observaciones: z.string().optional(),
+});
+
+type PagoFormData = z.infer<typeof pagoSchema>;
+
+interface Expediente {
   objectId: string;
-  folioPago: string;
-  monto: number;
-  fechaPago: string;
-  metodoPago: string;
-  estado: string;
-  clienteId: string;
+  numeroExpediente: string;
   clienteNombre?: string;
-  expedienteId?: string;
-  expedienteNumero?: string;
-  referencia?: string;
-  observaciones?: string;
-  created: string;
-  updated: string;
 }
 
-export default function Pagos() {
-  const [pagos, setPagos] = useState<Pago[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingPago, setEditingPago] = useState<Pago | null>(null);
+interface PagoFormProps {
+  pago?: any;
+  onSuccess: () => void;
+  onCancel: () => void;
+}
+
+export function PagoForm({ pago, onSuccess, onCancel }: PagoFormProps) {
   const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(false);
+  const [expedientes, setExpedientes] = useState<Expediente[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
+
+  const form = useForm<PagoFormData>({
+    resolver: zodResolver(pagoSchema),
+    defaultValues: {
+      folioExpediente: pago?.folioExpediente || "",
+      monto: pago?.monto?.toString() || "",
+      metodoPago: Array.isArray(pago?.metodoPago)
+        ? pago.metodoPago[0]
+        : pago?.metodoPago || "",
+      moneda: Array.isArray(pago?.moneda)
+        ? pago.moneda[0]
+        : pago?.moneda || "",
+      referencia: pago?.referencia || "",
+      relacionExpedientes:
+        pago?.relacionExpedientes?.objectId ||
+        pago?.relacionExpedientes ||
+        "none",
+      observaciones: pago?.observaciones || "",
+    },
+  });
 
   useEffect(() => {
-    loadPagos();
+    loadExpedientes();
   }, []);
 
-  const loadPagos = async () => {
+  const loadExpedientes = async () => {
+    try {
+      setLoadingData(true);
+      const data = await api.getAll<Expediente>("Expedientes");
+      setExpedientes(data);
+    } catch {
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar los expedientes",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingData(false);
+    }
+  };
+
+  const onSubmit = async (data: PagoFormData) => {
     try {
       setIsLoading(true);
-      const data = await api.getAll<Pago>('Pagos', {
-        sortBy: 'created desc',
-      });
-      setPagos(data);
-    } catch (error) {
+
+      const payload = {
+        folioExpediente: data.folioExpediente,
+        monto: parseFloat(data.monto),
+        metodoPago: [data.metodoPago],
+        moneda: [data.moneda],
+        referencia: data.referencia || "",
+        relacionExpedientes:
+          data.relacionExpedientes === "none"
+            ? null
+            : data.relacionExpedientes,
+        observaciones: data.observaciones || "",
+      };
+
+      console.log("✅ Payload final enviado:", payload);
+
+      if (pago?.objectId) {
+        await api.update("Pagos", pago.objectId, payload);
+        toast({
+          title: "Actualizado",
+          description: "Pago actualizado correctamente",
+        });
+      } else {
+        await api.create("Pagos", payload);
+        toast({
+          title: "Creado",
+          description: "Pago registrado correctamente",
+        });
+      }
+
+      onSuccess();
+    } catch (err) {
+      console.error("❌ Error guardando pago:", err);
       toast({
-        title: 'Error',
-        description: 'Error al cargar los pagos',
-        variant: 'destructive',
+        title: "Error",
+        description: "No se pudo guardar el pago",
+        variant: "destructive",
       });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('¿Estás seguro de eliminar este pago?')) return;
-
-    try {
-      await api.delete('Pagos', id);
-      toast({
-        title: 'Éxito',
-        description: 'Pago eliminado correctamente',
-      });
-      loadPagos();
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Error al eliminar el pago',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const handleEdit = (pago: Pago) => {
-    setEditingPago(pago);
-    setIsDialogOpen(true);
-  };
-
-  const handleNew = () => {
-    setEditingPago(null);
-    setIsDialogOpen(true);
-  };
-
-  const handleFormSuccess = () => {
-    setIsDialogOpen(false);
-    setEditingPago(null);
-    loadPagos();
-  };
-
-  const getEstadoBadge = (estado: string) => {
-    const colors: Record<string, string> = {
-      completado: 'bg-green-500/10 text-green-500',
-      pendiente: 'bg-yellow-500/10 text-yellow-500',
-      rechazado: 'bg-red-500/10 text-red-500',
-      cancelado: 'bg-gray-500/10 text-gray-500',
-    };
-    return colors[estado] || colors.pendiente;
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('es-MX', {
-      style: 'currency',
-      currency: 'MXN',
-    }).format(amount);
-  };
+  if (loadingData) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight text-foreground">Pagos</h2>
-          <p className="text-muted-foreground mt-1">Administra los pagos y transacciones</p>
-        </div>
-        <Button onClick={handleNew}>
-          <Plus className="mr-2 h-4 w-4" />
-          Nuevo Pago
-        </Button>
-      </div>
-
-      <Card className="shadow-card border-border/50">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CreditCard className="h-5 w-5 text-primary" />
-            Lista de Pagos
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="flex justify-center items-center h-64">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-          ) : pagos.length === 0 ? (
-            <div className="text-center text-muted-foreground py-12">
-              No hay pagos registrados
-            </div>
-          ) : (
-            <div className="rounded-md border border-border/50">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/50">
-                    <TableHead>Folio</TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Expediente</TableHead>
-                    <TableHead>Monto</TableHead>
-                    <TableHead>Método</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pagos.map((pago) => (
-                    <TableRow key={pago.objectId} className="hover:bg-muted/30">
-                      <TableCell className="font-medium">{pago.folioPago}</TableCell>
-                      <TableCell>{pago.clienteNombre || 'N/A'}</TableCell>
-                      <TableCell>{pago.expedienteNumero || 'N/A'}</TableCell>
-                      <TableCell className="font-semibold">{formatCurrency(pago.monto)}</TableCell>
-                      <TableCell className="capitalize">{pago.metodoPago}</TableCell>
-                      <TableCell>
-                        <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${getEstadoBadge(pago.estado)}`}>
-                          {pago.estado}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        {new Date(pago.fechaPago).toLocaleDateString('es-MX')}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleEdit(pago)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDelete(pago.objectId)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {editingPago ? 'Editar Pago' : 'Nuevo Pago'}
-            </DialogTitle>
-            <DialogDescription>
-              {editingPago 
-                ? 'Modifica la información del pago' 
-                : 'Completa el formulario para registrar un nuevo pago'}
-            </DialogDescription>
-          </DialogHeader>
-          <PagoForm
-            pago={editingPago}
-            onSuccess={handleFormSuccess}
-            onCancel={() => setIsDialogOpen(false)}
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Folio */}
+          <FormField
+            control={form.control}
+            name="folioExpediente"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Folio</FormLabel>
+                <FormControl>
+                  <Input placeholder="Ej. 001" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-        </DialogContent>
-      </Dialog>
-    </div>
+
+          {/* Monto */}
+          <FormField
+            control={form.control}
+            name="monto"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Monto</FormLabel>
+                <FormControl>
+                  <Input type="number" step="0.01" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          {/* Método de Pago */}
+          <FormField
+            control={form.control}
+            name="metodoPago"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Método de Pago</FormLabel>
+                <Select
+                  onValueChange={(val) => field.onChange(val)}
+                  value={field.value || ""}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona un método" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="DEBITO">Débito</SelectItem>
+                    <SelectItem value="CREDITO">Crédito</SelectItem>
+                    <SelectItem value="EFECTIVO EN VENTANILLA">
+                      Efectivo en Ventanilla
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          {/* Moneda */}
+          <FormField
+            control={form.control}
+            name="moneda"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Moneda</FormLabel>
+                <Select
+                  onValueChange={(val) => field.onChange(val)}
+                  value={field.value || ""}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona moneda" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="MXN">MXN</SelectItem>
+                    <SelectItem value="USD">USD</SelectItem>
+                    <SelectItem value="EU">EU</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          {/* Expediente */}
+          <FormField
+            control={form.control}
+            name="relacionExpedientes"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Expediente Asociado</FormLabel>
+                <Select
+                  onValueChange={(val) => field.onChange(val)}
+                  value={field.value || "none"}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona un expediente" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="none">Sin asignar</SelectItem>
+                    {expedientes.map((exp) => (
+                      <SelectItem key={exp.objectId} value={exp.objectId}>
+                        {exp.numeroExpediente}
+                        {exp.clienteNombre && ` - ${exp.clienteNombre}`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          {/* Referencia */}
+          <FormField
+            control={form.control}
+            name="referencia"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Referencia</FormLabel>
+                <FormControl>
+                  <Input
+                    placeholder="Número de referencia o transacción"
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        {/* Observaciones */}
+        <FormField
+          control={form.control}
+          name="observaciones"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Observaciones</FormLabel>
+              <FormControl>
+                <Textarea
+                  placeholder="Notas adicionales..."
+                  rows={3}
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <div className="flex justify-end gap-3">
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={isLoading}>
+            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {pago ? "Actualizar" : "Registrar"} Pago
+          </Button>
+        </div>
+      </form>
+    </Form>
   );
 }
