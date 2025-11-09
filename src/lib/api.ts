@@ -21,10 +21,22 @@ export async function apiRequest<T>(
     headers['user-token'] = userToken;
   }
 
+  const body = options.body ? JSON.stringify(options.body) : undefined;
+
+  // Debug logging for POST/PUT requests
+  if (body && (options.method === 'POST' || options.method === 'PUT')) {
+    console.log('🌐 API Request:', {
+      endpoint,
+      method: options.method,
+      body: options.body,
+      bodyString: body
+    });
+  }
+
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     method: options.method || 'GET',
     headers,
-    body: options.body ? JSON.stringify(options.body) : undefined,
+    body,
   });
 
   if (!response.ok) {
@@ -32,7 +44,14 @@ export async function apiRequest<T>(
     throw new Error(error.message || `HTTP error! status: ${response.status}`);
   }
 
-  return response.json();
+  const responseData = await response.json();
+
+  // Debug logging for POST/PUT responses
+  if (body && (options.method === 'POST' || options.method === 'PUT')) {
+    console.log('✅ API Response:', responseData);
+  }
+
+  return responseData;
 }
 
 // CRUD operations for any table

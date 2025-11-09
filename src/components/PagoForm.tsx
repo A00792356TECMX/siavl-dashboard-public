@@ -66,12 +66,8 @@ export function PagoForm({ pago, onSuccess, onCancel }: PagoFormProps) {
     defaultValues: {
       folioExpediente: pago?.folioExpediente || "",
       monto: pago?.monto?.toString() || "",
-      metodoPago: Array.isArray(pago?.metodoPago)
-        ? pago.metodoPago[0]
-        : pago?.metodoPago || "",
-      moneda: Array.isArray(pago?.moneda)
-        ? pago.moneda[0]
-        : pago?.moneda || "",
+      metodoPago: pago?.metodoPago || "",
+      moneda: pago?.moneda || "",
       referencia: pago?.referencia || "",
       relacionExpedientes:
         pago?.relacionExpedientes?.objectId ||
@@ -105,11 +101,13 @@ export function PagoForm({ pago, onSuccess, onCancel }: PagoFormProps) {
     try {
       setIsLoading(true);
 
+      console.log("📋 Form data received:", data);
+
       const payload = {
         folioExpediente: data.folioExpediente,
         monto: parseFloat(data.monto),
-        metodoPago: [data.metodoPago],
-        moneda: [data.moneda],
+        metodoPago: data.metodoPago, // Send as string, not array
+        moneda: data.moneda, // Send as string, not array
         referencia: data.referencia || "",
         relacionExpedientes:
           data.relacionExpedientes === "none"
@@ -197,8 +195,11 @@ export function PagoForm({ pago, onSuccess, onCancel }: PagoFormProps) {
               <FormItem>
                 <FormLabel>Método de Pago</FormLabel>
                 <Select
-                  onValueChange={(val) => field.onChange(val)}
-                  value={field.value || ""}
+                  onValueChange={(value) => {
+                    console.log("🔵 Método de Pago seleccionado:", value);
+                    field.onChange(value);
+                  }}
+                  defaultValue={field.value}
                 >
                   <FormControl>
                     <SelectTrigger>
@@ -226,8 +227,11 @@ export function PagoForm({ pago, onSuccess, onCancel }: PagoFormProps) {
               <FormItem>
                 <FormLabel>Moneda</FormLabel>
                 <Select
-                  onValueChange={(val) => field.onChange(val)}
-                  value={field.value || ""}
+                  onValueChange={(value) => {
+                    console.log("💰 Moneda seleccionada:", value);
+                    field.onChange(value);
+                  }}
+                  defaultValue={field.value}
                 >
                   <FormControl>
                     <SelectTrigger>
@@ -253,8 +257,8 @@ export function PagoForm({ pago, onSuccess, onCancel }: PagoFormProps) {
               <FormItem>
                 <FormLabel>Expediente Asociado</FormLabel>
                 <Select
-                  onValueChange={(val) => field.onChange(val)}
-                  value={field.value || "none"}
+                  onValueChange={field.onChange}
+                  defaultValue={field.value || "none"}
                 >
                   <FormControl>
                     <SelectTrigger>

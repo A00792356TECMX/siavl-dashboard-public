@@ -23,8 +23,8 @@ interface Pago {
   objectId: string;
   folioExpediente: string;
   monto: number;
-  metodoPago: string[];
-  moneda: string[];
+  metodoPago: string; // Changed from string[] to string
+  moneda: string; // Changed from string[] to string
   referencia?: string;
   observaciones?: string;
   created?: number;
@@ -132,8 +132,8 @@ export default function Pagos() {
                 <TableRow key={pago.objectId}>
                   <TableCell className="font-medium">{pago.folioExpediente}</TableCell>
                   <TableCell>${pago.monto.toFixed(2)}</TableCell>
-                  <TableCell>{pago.metodoPago?.[0] || "N/A"}</TableCell>
-                  <TableCell>{pago.moneda?.[0] || "N/A"}</TableCell>
+                  <TableCell>{pago.metodoPago || "N/A"}</TableCell>
+                  <TableCell>{pago.moneda || "N/A"}</TableCell>
                   <TableCell>{pago.referencia || "-"}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
