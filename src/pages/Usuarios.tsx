@@ -65,11 +65,10 @@ export default function Usuarios() {
 
     try {
       await api.delete('Usuarios', id);
-      toast.success('Usuario eliminado correctamente');
       loadUsuarios();
     } catch (error) {
       console.error('Error deleting user:', error);
-      toast.error('Error al eliminar usuario');
+      // Error toast already shown in apiRequest
     }
   };
   const handleSave = async () => {
@@ -90,7 +89,7 @@ export default function Usuarios() {
         rol: newUser.rol || '',
         activo: newUser.activo,
       });
-      toast.success('Usuario actualizado correctamente');
+      // Success toast already shown in apiRequest
     } else {
       // 🆕 Create new user - Validate email doesn't exist
       const existingUser = usuarios.find(
@@ -110,7 +109,7 @@ export default function Usuarios() {
         rol: newUser.rol || '',
         activo: newUser.activo,
       });
-      toast.success('Usuario creado correctamente');
+      // Success toast already shown in apiRequest
     }
 
     // Reload the users list before closing the dialog
@@ -129,7 +128,7 @@ export default function Usuarios() {
     setIsDialogOpen(false);
   } catch (error) {
     console.error('Error guardando usuario:', error);
-    toast.error('Error al guardar usuario');
+    // Error toast already shown in apiRequest
   } finally {
     setIsCreating(false);
   }

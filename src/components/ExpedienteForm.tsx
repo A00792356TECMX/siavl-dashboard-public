@@ -125,27 +125,17 @@ export function ExpedienteForm({ expediente, onSuccess, onCancel }: ExpedienteFo
       if (expediente?.objectId) {
         // 🔄 Update
         await api.update('Expedientes', expediente.objectId, payload);
-        toast({
-          title: 'Éxito',
-          description: 'Expediente actualizado correctamente',
-        });
+        // Success toast already shown in apiRequest
       } else {
         // 🆕 Create
         await api.create('Expedientes', payload);
-        toast({
-          title: 'Éxito',
-          description: 'Expediente creado correctamente',
-        });
+        // Success toast already shown in apiRequest
       }
 
       onSuccess();
     } catch (error) {
       console.error(error);
-      toast({
-        title: 'Error',
-        description: 'Error al guardar el expediente',
-        variant: 'destructive',
-      });
+      // Error toast already shown in apiRequest
     } finally {
       setIsLoading(false);
     }

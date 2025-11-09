@@ -1,3 +1,5 @@
+import { toast } from 'sonner';
+
 const API_BASE_URL = 'https://knowingplant-us.backendless.app/api/5D4E4322-AD40-411D-BA2E-627770DB2B73/C2FF6422-711C-449C-BB07-646A3F037CC5';
 
 export interface ApiRequestOptions {
@@ -39,12 +41,64 @@ export async function apiRequest<T>(
     body,
   });
 
+  // Handle different HTTP status codes
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: 'Error en la solicitud' }));
-    throw new Error(error.message || `HTTP error! status: ${response.status}`);
+    const errorMessage = error.message || `Error HTTP: ${response.status}`;
+
+    // Handle specific status codes
+    switch (response.status) {
+      case 401:
+        toast.error('Sesión expirada. Por favor, inicia sesión nuevamente.', {
+          position: 'bottom-right',
+        });
+        // Redirect to login
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 1500);
+        break;
+
+      case 403:
+        toast.error('No tienes permisos para realizar esta acción.', {
+          position: 'bottom-right',
+        });
+        break;
+
+      case 404:
+        toast.error('Recurso no encontrado.', {
+          position: 'bottom-right',
+        });
+        break;
+
+      case 500:
+        toast.error('Error interno del servidor. Por favor, intenta más tarde.', {
+          position: 'bottom-right',
+        });
+        break;
+
+      default:
+        toast.error(errorMessage, {
+          position: 'bottom-right',
+        });
+    }
+
+    throw new Error(errorMessage);
   }
 
   const responseData = await response.json();
+
+  // Show success notification for POST/PUT/DELETE operations
+  if (options.method === 'POST' || options.method === 'PUT' || options.method === 'DELETE') {
+    const successMessages: Record<string, string> = {
+      'POST': 'Registro creado exitosamente',
+      'PUT': 'Registro actualizado exitosamente',
+      'DELETE': 'Registro eliminado exitosamente',
+    };
+
+    toast.success(successMessages[options.method] || 'Operación exitosa', {
+      position: 'bottom-right',
+    });
+  }
 
   // Debug logging for POST/PUT responses
   if (body && (options.method === 'POST' || options.method === 'PUT')) {
@@ -73,12 +127,12 @@ export const api = {
       method: 'POST',
       body: data,
     });
-    
-    // Log the action
+
+    // Log the action (toast notification already shown in apiRequest)
     const { logAction } = await import('./logger');
     const recordId = (result as any)?.objectId || 'unknown';
     await logAction('crear', table, recordId, JSON.stringify(data));
-    
+
     return result;
   },
 
@@ -88,11 +142,11 @@ export const api = {
       method: 'PUT',
       body: data,
     });
-    
-    // Log the action
+
+    // Log the action (toast notification already shown in apiRequest)
     const { logAction } = await import('./logger');
     await logAction('editar', table, id, JSON.stringify(data));
-    
+
     return result;
   },
 
@@ -101,11 +155,11 @@ export const api = {
     const result = await apiRequest(`/data/${table}/${id}`, {
       method: 'DELETE',
     });
-    
-    // Log the action
+
+    // Log the action (toast notification already shown in apiRequest)
     const { logAction } = await import('./logger');
     await logAction('eliminar', table, id);
-    
+
     return result;
   },
 };

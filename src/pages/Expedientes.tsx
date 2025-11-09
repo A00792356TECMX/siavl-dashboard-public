@@ -30,6 +30,8 @@ export default function Expedientes() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingExpediente, setEditingExpediente] = useState<Expediente | null>(null);
+  const [pagosData, setPagosData] = useState<Map<string, number>>(new Map());
+  const [lotesData, setLotesData] = useState<Map<string, number>>(new Map());
   const { toast } = useToast();
 
   useEffect(() => {
@@ -39,10 +41,28 @@ export default function Expedientes() {
   const loadExpedientes = async () => {
     try {
       setIsLoading(true);
-      const data = await api.getAll<Expediente>('Expedientes', {
-        sortBy: 'created desc',
+      const [expedientesData, pagosData, lotesData] = await Promise.all([
+        api.getAll<Expediente>('Expedientes', { sortBy: 'created desc' }),
+        api.getAll<any>('Pagos'),
+        api.getAll<any>('Lotes')
+      ]);
+
+      // Calculate total paid amount per expediente (grouped by folioExpediente)
+      const pagosPorExpediente = new Map<string, number>();
+      pagosData.forEach((pago: any) => {
+        const current = pagosPorExpediente.get(pago.folioExpediente) || 0;
+        pagosPorExpediente.set(pago.folioExpediente, current + (pago.monto || 0));
       });
-      setExpedientes(data);
+
+      // Map lotes prices by numeroLote
+      const preciosPorLote = new Map<string, number>();
+      lotesData.forEach((lote: any) => {
+        preciosPorLote.set(lote.numeroLote, lote.precio || 0);
+      });
+
+      setExpedientes(expedientesData);
+      setPagosData(pagosPorExpediente);
+      setLotesData(preciosPorLote);
     } catch (error) {
       toast({
         title: 'Error',
@@ -54,22 +74,25 @@ export default function Expedientes() {
     }
   };
 
+  const getMontoPagado = (folioExpediente: string): number => {
+    return pagosData.get(folioExpediente) || 0;
+  };
+
+  const getMontoPorPagar = (folioExpediente: string, lote: string): number => {
+    const precioLote = lotesData.get(lote) || 0;
+    const montoPagado = getMontoPagado(folioExpediente);
+    return precioLote - montoPagado;
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm('¿Estás seguro de eliminar este expediente?')) return;
 
     try {
       await api.delete('Expedientes', id);
-      toast({
-        title: 'Éxito',
-        description: 'Expediente eliminado correctamente',
-      });
+      // Success toast already shown in apiRequest
       loadExpedientes();
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Error al eliminar el expediente',
-        variant: 'destructive',
-      });
+      // Error toast already shown in apiRequest
     }
   };
 
@@ -137,42 +160,55 @@ export default function Expedientes() {
                     <TableHead>Cliente</TableHead>
                     <TableHead>Lote</TableHead>
                     <TableHead>Estado</TableHead>
+                    <TableHead className="text-right">Monto Pagado</TableHead>
+                    <TableHead className="text-right">Monto por Pagar</TableHead>
                     <TableHead>Fecha Apertura</TableHead>
                     <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {expedientes.map((expediente) => (
-                    <TableRow key={expediente.objectId} className="hover:bg-muted/30">
-                      <TableCell className="font-medium">{expediente.folioExpediente}</TableCell>
-                      <TableCell>{expediente.cliente || 'N/A'}</TableCell>
-                      <TableCell>{expediente.lote || 'Sin asignar'}</TableCell>
-                      <TableCell>{expediente.activo ? '✅ Activo' : '❌ Inactivo'}</TableCell>
-                      <TableCell>
-                        {expediente.created
-                          ? new Date(expediente.created).toLocaleDateString('es-MX')
-                          : '—'}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleEdit(expediente)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDelete(expediente.objectId)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {expedientes.map((expediente) => {
+                    const montoPagado = getMontoPagado(expediente.folioExpediente);
+                    const montoPorPagar = getMontoPorPagar(expediente.folioExpediente, expediente.lote);
+
+                    return (
+                      <TableRow key={expediente.objectId} className="hover:bg-muted/30">
+                        <TableCell className="font-medium">{expediente.folioExpediente}</TableCell>
+                        <TableCell>{expediente.cliente || 'N/A'}</TableCell>
+                        <TableCell>{expediente.lote || 'Sin asignar'}</TableCell>
+                        <TableCell>{expediente.activo ? '✅ Activo' : '❌ Inactivo'}</TableCell>
+                        <TableCell className="text-right font-medium text-green-600">
+                          ${montoPagado.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </TableCell>
+                        <TableCell className="text-right font-medium text-orange-600">
+                          ${montoPorPagar.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </TableCell>
+                        <TableCell>
+                          {expediente.created
+                            ? new Date(expediente.created).toLocaleDateString('es-MX')
+                            : '—'}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleEdit(expediente)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDelete(expediente.objectId)}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
