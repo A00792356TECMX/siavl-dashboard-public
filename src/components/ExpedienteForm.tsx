@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
@@ -36,6 +37,7 @@ interface ExpedienteFormProps {
 
 export function ExpedienteForm({ expediente, onSuccess, onCancel }: ExpedienteFormProps) {
   const [isLoading, setIsLoading] = useState(false);
+  const [availableLotes, setAvailableLotes] = useState<Array<{ numeroLote: string; manzana: string }>>([]);
   const { toast } = useToast();
 
   const form = useForm<ExpedienteFormData>({
@@ -49,6 +51,43 @@ export function ExpedienteForm({ expediente, onSuccess, onCancel }: ExpedienteFo
     },
   });
 
+  // Load available lotes (not assigned to any expediente)
+  useEffect(() => {
+    loadAvailableLotes();
+  }, []);
+
+  const loadAvailableLotes = async () => {
+    try {
+      // Get all lotes and expedientes
+      const [allLotes, allExpedientes] = await Promise.all([
+        api.getAll('Lotes'),
+        api.getAll('Expedientes')
+      ]);
+
+      // Get lotes already assigned (excluding the current expediente if editing)
+      const assignedLotes = allExpedientes
+        .filter((exp: any) => exp.objectId !== expediente?.objectId)
+        .map((exp: any) => exp.lote);
+
+      // Filter available lotes
+      const available = allLotes
+        .filter((lote: any) => !assignedLotes.includes(lote.numeroLote))
+        .map((lote: any) => ({
+          numeroLote: lote.numeroLote,
+          manzana: lote.manzana || 'Sin manzana'
+        }));
+
+      setAvailableLotes(available);
+    } catch (error) {
+      console.error('Error loading lotes:', error);
+      toast({
+        title: 'Error',
+        description: 'Error al cargar los lotes disponibles',
+        variant: 'destructive',
+      });
+    }
+  };
+
   // ✅ Generate sequential folio when creating new expediente
   const generateFolio = async () => {
     const data = await api.getAll('Expedientes');
@@ -59,6 +98,24 @@ export function ExpedienteForm({ expediente, onSuccess, onCancel }: ExpedienteFo
   const onSubmit = async (data: ExpedienteFormData) => {
     try {
       setIsLoading(true);
+
+      // Validate that lote is not assigned to another expediente
+      const allExpedientes = await api.getAll('Expedientes');
+      const loteAlreadyAssigned = allExpedientes.find(
+        (exp: any) =>
+          exp.lote === data.lote &&
+          exp.objectId !== expediente?.objectId
+      );
+
+      if (loteAlreadyAssigned) {
+        toast({
+          title: 'Error',
+          description: 'Este lote ya está asignado a otro expediente',
+          variant: 'destructive',
+        });
+        setIsLoading(false);
+        return;
+      }
 
       let payload = {
         ...data,
@@ -138,9 +195,26 @@ export function ExpedienteForm({ expediente, onSuccess, onCancel }: ExpedienteFo
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Lote</FormLabel>
-                <FormControl>
-                  <Input placeholder="Número o nombre del lote" {...field} />
-                </FormControl>
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar lote disponible" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {availableLotes.length === 0 ? (
+                      <SelectItem value="no-disponible" disabled>
+                        No hay lotes disponibles
+                      </SelectItem>
+                    ) : (
+                      availableLotes.map((lote) => (
+                        <SelectItem key={lote.numeroLote} value={lote.numeroLote}>
+                          {lote.numeroLote} - Manzana {lote.manzana}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
                 <FormMessage />
               </FormItem>
             )}
