@@ -20,9 +20,9 @@ interface Lote {
   manzana: string;
   superficie: number;
   precio: number;
-  estado: string;
+  activo: 'Disponibles' | 'Reservados' | 'Vendidos' | string;
   ubicacion?: string;
-  descripcion?: string;
+  observaciones?: string;
   created: string;
   updated: string;
 }
@@ -38,12 +38,11 @@ export default function Lotes() {
     loadLotes();
   }, []);
 
+  // 🧠 Load all Lotes from Backendless
   const loadLotes = async () => {
     try {
       setIsLoading(true);
-      const data = await api.getAll<Lote>('Lotes', {
-        sortBy: 'created desc',
-      });
+      const data = await api.getAll<Lote>('Lotes', { sortBy: 'created desc' });
       setLotes(data);
     } catch (error) {
       toast({
@@ -56,6 +55,7 @@ export default function Lotes() {
     }
   };
 
+  // 🗑️ Delete Lote
   const handleDelete = async (id: string) => {
     if (!confirm('¿Estás seguro de eliminar este lote?')) return;
 
@@ -75,48 +75,61 @@ export default function Lotes() {
     }
   };
 
+  // ✏️ Edit Lote
   const handleEdit = (lote: Lote) => {
     setEditingLote(lote);
     setIsDialogOpen(true);
   };
 
+  // ➕ New Lote
   const handleNew = () => {
     setEditingLote(null);
     setIsDialogOpen(true);
   };
 
+  // ✅ After create/update
   const handleFormSuccess = () => {
     setIsDialogOpen(false);
     setEditingLote(null);
     loadLotes();
   };
 
-  const getEstadoBadge = (estado: string) => {
-    const colors: Record<string, string> = {
-      disponible: 'bg-green-500/10 text-green-500',
-      reservado: 'bg-yellow-500/10 text-yellow-500',
-      vendido: 'bg-blue-500/10 text-blue-500',
-      'no-disponible': 'bg-gray-500/10 text-gray-500',
-    };
-    return colors[estado] || colors.disponible;
+  // 🔍 Handle Multiple Choice arrays or single strings
+  const getActivo = (l: any): string => {
+    if (!l || !l.activo) return '';
+    return Array.isArray(l.activo) ? (l.activo[0] ?? '') : l.activo;
   };
 
+  // 🎨 Badge colors
+  const getEstadoBadge = (activo: string) => {
+    const colors: Record<string, string> = {
+      Disponibles: 'bg-green-500/10 text-green-500',
+      Reservados: 'bg-yellow-500/10 text-yellow-500',
+      Vendidos: 'bg-blue-500/10 text-blue-500',
+    };
+    return colors[activo] || 'bg-gray-400/10 text-gray-500';
+  };
+
+  // 💰 Currency formatter
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('es-MX', {
       style: 'currency',
       currency: 'MXN',
-    }).format(amount);
+      minimumFractionDigits: 2,
+    }).format(amount || 0);
   };
 
+  // 📊 Stats from activo
   const estadisticas = {
     total: lotes.length,
-    disponibles: lotes.filter(l => l.estado === 'disponible').length,
-    reservados: lotes.filter(l => l.estado === 'reservado').length,
-    vendidos: lotes.filter(l => l.estado === 'vendido').length,
+    disponibles: lotes.filter((l) => getActivo(l) === 'Disponibles').length,
+    reservados: lotes.filter((l) => getActivo(l) === 'Reservados').length,
+    vendidos: lotes.filter((l) => getActivo(l) === 'Vendidos').length,
   };
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-bold tracking-tight text-foreground">Lotes</h2>
@@ -128,42 +141,60 @@ export default function Lotes() {
         </Button>
       </div>
 
-      {/* Estadísticas */}
+      {/* Stats */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Lotes</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Total Lotes
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-foreground">{estadisticas.total}</div>
           </CardContent>
         </Card>
+
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Disponibles</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Disponibles
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-500">{estadisticas.disponibles}</div>
+            <div className="text-2xl font-bold text-green-500">
+              {estadisticas.disponibles}
+            </div>
           </CardContent>
         </Card>
+
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Reservados</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Reservados
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-yellow-500">{estadisticas.reservados}</div>
+            <div className="text-2xl font-bold text-yellow-500">
+              {estadisticas.reservados}
+            </div>
           </CardContent>
         </Card>
+
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Vendidos</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Vendidos
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-blue-500">{estadisticas.vendidos}</div>
+            <div className="text-2xl font-bold text-blue-500">
+              {estadisticas.vendidos}
+            </div>
           </CardContent>
         </Card>
       </div>
 
+      {/* Tabla de Lotes */}
       <Card className="shadow-card border-border/50">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -194,39 +225,47 @@ export default function Lotes() {
                     <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
+
                 <TableBody>
-                  {lotes.map((lote) => (
-                    <TableRow key={lote.objectId} className="hover:bg-muted/30">
-                      <TableCell className="font-medium">{lote.numeroLote}</TableCell>
-                      <TableCell>{lote.manzana}</TableCell>
-                      <TableCell>{lote.superficie} m²</TableCell>
-                      <TableCell className="font-semibold">{formatCurrency(lote.precio)}</TableCell>
-                      <TableCell>{lote.ubicacion || 'N/A'}</TableCell>
-                      <TableCell>
-                        <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${getEstadoBadge(lote.estado)}`}>
-                          {lote.estado}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleEdit(lote)}
+                  {lotes.map((lote) => {
+                    const estado = getActivo(lote);
+                    return (
+                      <TableRow key={lote.objectId} className="hover:bg-muted/30">
+                        <TableCell className="font-medium">{lote.numeroLote}</TableCell>
+                        <TableCell>{lote.manzana}</TableCell>
+                        <TableCell>{lote.superficie} m²</TableCell>
+                        <TableCell className="font-semibold">
+                          {formatCurrency(lote.precio)}
+                        </TableCell>
+                        <TableCell>{lote.ubicacion || 'N/A'}</TableCell>
+                        <TableCell>
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${getEstadoBadge(estado)}`}
                           >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDelete(lote.objectId)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                            {estado || '—'}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleEdit(lote)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDelete(lote.objectId)}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -234,15 +273,14 @@ export default function Lotes() {
         </CardContent>
       </Card>
 
+      {/* Dialog Form */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>
-              {editingLote ? 'Editar Lote' : 'Nuevo Lote'}
-            </DialogTitle>
+            <DialogTitle>{editingLote ? 'Editar Lote' : 'Nuevo Lote'}</DialogTitle>
             <DialogDescription>
-              {editingLote 
-                ? 'Modifica la información del lote' 
+              {editingLote
+                ? 'Modifica la información del lote'
                 : 'Completa el formulario para registrar un nuevo lote'}
             </DialogDescription>
           </DialogHeader>

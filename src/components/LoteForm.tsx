@@ -25,19 +25,20 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 
 const loteSchema = z.object({
-  numeroLote: z.string().min(1, 'Número de lote requerido').max(50),
   manzana: z.string().min(1, 'Manzana requerida').max(50),
-  superficie: z.string().min(1, 'Superficie requerida').refine((val) => !isNaN(parseFloat(val)) && parseFloat(val) > 0, {
-    message: 'Debe ser una superficie válida mayor a 0',
-  }),
-  precio: z.string().min(1, 'Precio requerido').refine((val) => !isNaN(parseFloat(val)) && parseFloat(val) > 0, {
-    message: 'Debe ser un precio válido mayor a 0',
-  }),
-  estado: z.enum(['disponible', 'reservado', 'vendido', 'no-disponible'], {
+  superficie: z.string().min(1, 'Superficie requerida').refine(
+    (val) => !isNaN(parseFloat(val)) && parseFloat(val) > 0,
+    { message: 'Debe ser una superficie válida mayor a 0' }
+  ),
+  precio: z.string().min(1, 'Precio requerido').refine(
+    (val) => !isNaN(parseFloat(val)) && parseFloat(val) > 0,
+    { message: 'Debe ser un precio válido mayor a 0' }
+  ),
+  activo: z.enum(['Disponibles', 'Reservados', 'Vendidos'], {
     required_error: 'Estado requerido',
   }),
   ubicacion: z.string().max(200).optional(),
-  descripcion: z.string().max(1000).optional(),
+  observaciones: z.string().max(1000).optional(),
 });
 
 type LoteFormData = z.infer<typeof loteSchema>;
@@ -55,42 +56,54 @@ export function LoteForm({ lote, onSuccess, onCancel }: LoteFormProps) {
   const form = useForm<LoteFormData>({
     resolver: zodResolver(loteSchema),
     defaultValues: {
-      numeroLote: lote?.numeroLote || '',
       manzana: lote?.manzana || '',
       superficie: lote?.superficie?.toString() || '',
       precio: lote?.precio?.toString() || '',
-      estado: lote?.estado || 'disponible',
+      activo: Array.isArray(lote?.activo)
+        ? lote?.activo[0]
+        : lote?.activo || 'Disponibles',
       ubicacion: lote?.ubicacion || '',
-      descripcion: lote?.descripcion || '',
+      observaciones: lote?.observaciones || '',
     },
   });
 
   const onSubmit = async (data: LoteFormData) => {
     try {
       setIsLoading(true);
-      
+
+      let numeroLote = lote?.numeroLote;
+      if (!lote?.objectId) {
+        const existing = await api.getAll('Lotes');
+        const lastNumber = existing.length > 0
+          ? Math.max(...existing.map((l: any) => parseInt(l.numeroLote || 0)))
+          : 0;
+        numeroLote = (lastNumber + 1).toString().padStart(3, '0');
+      }
+
       const payload = {
-        ...data,
+        numeroLote,
+        manzana: data.manzana,
         superficie: parseFloat(data.superficie),
         precio: parseFloat(data.precio),
+        activo: data.activo, // ✅ Always array
+        ubicacion: data.ubicacion || '',
+        observaciones: data.observaciones || '',
       };
 
       if (lote?.objectId) {
         await api.update('Lotes', lote.objectId, payload);
-        toast({
-          title: 'Éxito',
-          description: 'Lote actualizado correctamente',
-        });
+        toast({ title: 'Éxito', description: 'Lote actualizado correctamente' });
       } else {
         await api.create('Lotes', payload);
         toast({
           title: 'Éxito',
-          description: 'Lote creado correctamente',
+          description: `Lote ${numeroLote} creado correctamente`,
         });
       }
-      
+
       onSuccess();
     } catch (error) {
+      console.error(error);
       toast({
         title: 'Error',
         description: 'Error al guardar el lote',
@@ -105,19 +118,12 @@ export function LoteForm({ lote, onSuccess, onCancel }: LoteFormProps) {
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <FormField
-            control={form.control}
-            name="numeroLote"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Número de Lote</FormLabel>
-                <FormControl>
-                  <Input placeholder="001" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          {lote?.numeroLote && (
+            <FormItem>
+              <FormLabel>Número de Lote</FormLabel>
+              <Input value={lote.numeroLote} disabled />
+            </FormItem>
+          )}
 
           <FormField
             control={form.control}
@@ -140,12 +146,7 @@ export function LoteForm({ lote, onSuccess, onCancel }: LoteFormProps) {
               <FormItem>
                 <FormLabel>Superficie (m²)</FormLabel>
                 <FormControl>
-                  <Input 
-                    type="number" 
-                    step="0.01" 
-                    placeholder="200.00" 
-                    {...field} 
-                  />
+                  <Input type="number" step="0.01" placeholder="200.00" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -159,12 +160,7 @@ export function LoteForm({ lote, onSuccess, onCancel }: LoteFormProps) {
               <FormItem>
                 <FormLabel>Precio</FormLabel>
                 <FormControl>
-                  <Input 
-                    type="number" 
-                    step="0.01" 
-                    placeholder="0.00" 
-                    {...field} 
-                  />
+                  <Input type="number" step="0.01" placeholder="0.00" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -173,21 +169,20 @@ export function LoteForm({ lote, onSuccess, onCancel }: LoteFormProps) {
 
           <FormField
             control={form.control}
-            name="estado"
+            name="activo"
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Estado</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <Select onValueChange={field.onChange} value={field.value}>
                   <FormControl>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecciona un estado" />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="disponible">Disponible</SelectItem>
-                    <SelectItem value="reservado">Reservado</SelectItem>
-                    <SelectItem value="vendido">Vendido</SelectItem>
-                    <SelectItem value="no-disponible">No Disponible</SelectItem>
+                    <SelectItem value="Disponibles">Disponibles</SelectItem>
+                    <SelectItem value="Reservados">Reservados</SelectItem>
+                    <SelectItem value="Vendidos">Vendidos</SelectItem>
                   </SelectContent>
                 </Select>
                 <FormMessage />
@@ -200,9 +195,9 @@ export function LoteForm({ lote, onSuccess, onCancel }: LoteFormProps) {
             name="ubicacion"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Ubicación (Opcional)</FormLabel>
+                <FormLabel>Ubicación</FormLabel>
                 <FormControl>
-                  <Input placeholder="Sector Norte, Calle Principal..." {...field} />
+                  <Input placeholder="Zona Norte, Calle Principal..." {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -212,13 +207,13 @@ export function LoteForm({ lote, onSuccess, onCancel }: LoteFormProps) {
 
         <FormField
           control={form.control}
-          name="descripcion"
+          name="observaciones"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Descripción</FormLabel>
+              <FormLabel>Observaciones</FormLabel>
               <FormControl>
-                <Textarea 
-                  placeholder="Características del lote, servicios disponibles, accesos..."
+                <Textarea
+                  placeholder="Características, servicios, accesos..."
                   className="resize-none"
                   rows={4}
                   {...field}

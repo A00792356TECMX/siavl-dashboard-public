@@ -12,6 +12,9 @@ import {
 } from '@/components/ui/table';
 import { Plus, Pencil, Trash2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 interface Usuario {
   objectId: string;
@@ -25,6 +28,19 @@ interface Usuario {
 export default function Usuarios() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [newUser, setNewUser] = useState({
+  email: '',
+  name: '',
+  telefono: '',
+  rol: '',
+  activo: true,
+});
+  const [isCreating, setIsCreating] = useState(false);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<Usuario | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+
+
 
   useEffect(() => {
     loadUsuarios();
@@ -33,7 +49,7 @@ export default function Usuarios() {
   const loadUsuarios = async () => {
     try {
       setIsLoading(true);
-      const data = await api.getAll<Usuario>('Users');
+      const data = await api.getAll<Usuario>('Usuarios');
       setUsuarios(data);
     } catch (error) {
       console.error('Error loading users:', error);
@@ -47,7 +63,7 @@ export default function Usuarios() {
     if (!confirm('¿Estás seguro de eliminar este usuario?')) return;
 
     try {
-      await api.delete('Users', id);
+      await api.delete('Usuarios', id);
       toast.success('Usuario eliminado correctamente');
       loadUsuarios();
     } catch (error) {
@@ -55,7 +71,55 @@ export default function Usuarios() {
       toast.error('Error al eliminar usuario');
     }
   };
+  const handleSave = async () => {
+  if (!newUser.email) {
+    toast.error('El campo Email es obligatorio');
+    return;
+  }
 
+  try {
+    setIsCreating(true);
+
+    if (isEditing && selectedUser) {
+      // 🔄 Update existing user
+      await api.update('Usuarios', selectedUser.objectId, {
+        email: newUser.email,
+        nombre: newUser.name || null,
+        telefono: newUser.telefono || '',
+        rol: newUser.rol || '',
+        activo: newUser.activo,
+      });
+      toast.success('Usuario actualizado correctamente');
+    } else {
+      // 🆕 Create new user
+      await api.create('Usuarios', {
+        email: newUser.email,
+        nombre: newUser.name || null,
+        telefono: newUser.telefono || '',
+        rol: newUser.rol || '',
+        activo: newUser.activo,
+      });
+      toast.success('Usuario creado correctamente');
+    }
+
+    setNewUser({
+      email: '',
+      name: '',
+      telefono: '',
+      rol: '',
+      activo: true,
+    });
+    setSelectedUser(null);
+    setIsEditing(false);
+    loadUsuarios();
+  } catch (error) {
+    console.error('Error guardando usuario:', error);
+    toast.error('Error al guardar usuario');
+  } finally {
+    setIsCreating(false);
+    setIsDialogOpen(false); // if you added the close modal state earlier
+  }
+};
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -65,10 +129,79 @@ export default function Usuarios() {
             Gestiona los usuarios del sistema
           </p>
         </div>
-        <Button className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-md">
-          <Plus className="h-4 w-4 mr-2" />
-          Nuevo Usuario
-        </Button>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+  <DialogTrigger asChild>
+    <Button className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-md">
+      <Plus className="h-4 w-4 mr-2" />
+      Nuevo Usuario
+    </Button>
+  </DialogTrigger>
+
+
+  <DialogContent>
+    <DialogHeader>
+      <DialogTitle>{isEditing ? 'Editar usuario' : 'Registrar nuevo usuario'}</DialogTitle>
+    </DialogHeader>
+
+    <div className="space-y-4">
+      <div>
+        <Label>Email</Label>
+        <Input
+          type="email"
+          placeholder="usuario@correo.com"
+          value={newUser.email}
+          disabled={isEditing} 
+          onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+        />
+      </div>
+      <div>
+        <Label>Nombre</Label>
+        <Input
+          placeholder="Nombre completo"
+          value={newUser.name}
+          onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
+        />
+      </div>
+      <div>
+        <Label>Teléfono</Label>
+        <Input
+          placeholder="555-123-4567"
+          value={newUser.telefono}
+          onChange={(e) => setNewUser({ ...newUser, telefono: e.target.value })}
+        />
+      </div>
+      <div>
+        <Label>Rol</Label>
+        <Input
+          placeholder="Admin, Cliente, etc."
+          value={newUser.rol}
+          onChange={(e) => setNewUser({ ...newUser, rol: e.target.value })}
+         />
+      </div>
+      
+      <div className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={newUser.activo}
+          onChange={(e) => setNewUser({ ...newUser, activo: e.target.checked })}
+        />
+        <Label>Activo</Label>
+      </div>
+
+      <Button
+        onClick={handleSave}
+        disabled={isCreating}
+        className="w-full mt-2 bg-primary text-white"
+      >
+        {isCreating ? (
+          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+        ) : (
+          isEditing ? 'Guardar Cambios' : 'Crear Usuario'
+        )}
+      </Button>
+    </div>
+  </DialogContent>
+</Dialog>
       </div>
 
       <Card className="shadow-card border-border/50">
@@ -102,7 +235,7 @@ export default function Usuarios() {
                   {usuarios.map((usuario) => (
                     <TableRow key={usuario.objectId} className="hover:bg-muted/50">
                       <TableCell className="font-medium">{usuario.email}</TableCell>
-                      <TableCell>{usuario.name || '-'}</TableCell>
+                      <TableCell>{usuario.name || usuario.nombre}</TableCell>
                       <TableCell>
                         {usuario.created 
                           ? new Date(usuario.created).toLocaleDateString('es-MX')
@@ -115,6 +248,19 @@ export default function Usuarios() {
                             variant="ghost"
                             size="sm"
                             className="h-8 w-8 p-0 text-primary hover:text-primary hover:bg-primary/10"
+                            onClick={() => {
+                              setSelectedUser(usuario);
+                              setNewUser({
+                                email: usuario.email || '',
+                                name: usuario.nombre || usuario.name || '',
+                                telefono: usuario.telefono || '',
+                                rol: usuario.rol || '',
+                                activo: usuario.activo ?? true,
+                              });
+                              setIsEditing(true);
+                              setIsDialogOpen(true);
+                              }}
+
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>

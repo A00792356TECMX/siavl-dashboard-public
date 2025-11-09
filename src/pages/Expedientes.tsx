@@ -16,16 +16,12 @@ import {
 
 interface Expediente {
   objectId: string;
-  numeroExpediente: string;
-  clienteId: string;
-  clienteNombre?: string;
-  loteId?: string;
-  loteNumero?: string;
-  estado: string;
-  fechaApertura: string;
-  fechaCierre?: string;
+  folioExpediente: string;
+  cliente: string;
+  lote: string;
   observaciones?: string;
-  created: string;
+  activo: boolean;
+  created: string;  // Fecha apertura
   updated: string;
 }
 
@@ -148,16 +144,14 @@ export default function Expedientes() {
                 <TableBody>
                   {expedientes.map((expediente) => (
                     <TableRow key={expediente.objectId} className="hover:bg-muted/30">
-                      <TableCell className="font-medium">{expediente.numeroExpediente}</TableCell>
-                      <TableCell>{expediente.clienteNombre || 'N/A'}</TableCell>
-                      <TableCell>{expediente.loteNumero || 'Sin asignar'}</TableCell>
+                      <TableCell className="font-medium">{expediente.folioExpediente}</TableCell>
+                      <TableCell>{expediente.cliente || 'N/A'}</TableCell>
+                      <TableCell>{expediente.lote || 'Sin asignar'}</TableCell>
+                      <TableCell>{expediente.activo ? '✅ Activo' : '❌ Inactivo'}</TableCell>
                       <TableCell>
-                        <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${getEstadoBadge(expediente.estado)}`}>
-                          {expediente.estado}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        {new Date(expediente.fechaApertura).toLocaleDateString('es-MX')}
+                        {expediente.created
+                          ? new Date(expediente.created).toLocaleDateString('es-MX')
+                          : '—'}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
