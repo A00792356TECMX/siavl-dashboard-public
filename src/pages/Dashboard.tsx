@@ -16,9 +16,14 @@ interface Expediente {
 
 interface Pago {
   objectId: string;
-  monto?: string;
+  monto?: number;
   metodo?: string;
   estado?: string;
+}
+
+interface Lote {
+  objectId: string;
+  precio?: number;
 }
 
 export default function Dashboard() {
@@ -28,7 +33,7 @@ export default function Dashboard() {
     usuarios: 0,
     expedientes: 0,
     pagos: 0,
-    conversion: 0,
+    porcentajeCobrado: 0,
   });
 
   const [loading, setLoading] = useState(true);
@@ -37,32 +42,41 @@ export default function Dashboard() {
     const fetchStats = async () => {
       try {
         // ✅ Fetch all data in parallel using api.getAll
-        const [usuarios, expedientes, pagos] = await Promise.all([
-          api.getAll<Usuario>("usuarios"),
-          api.getAll<Expediente>("expedientes"),
-          api.getAll<Pago>("pagos"),
+        const [usuarios, expedientes, pagos, lotes] = await Promise.all([
+          api.getAll<Usuario>("Usuarios"),
+          api.getAll<Expediente>("Expedientes"),
+          api.getAll<Pago>("Pagos"),
+          api.getAll<Lote>("Lotes"),
         ]);
 
         // ✅ Calculate totals
         const totalUsuarios = usuarios.length;
         const totalExpedientes = expedientes.length;
-        const totalPagos = pagos.reduce(
-          (sum: number, p: Pago) => sum + (parseFloat(p.monto || "0") || 0),
+
+        // Sum all payments (monto is number in Backendless)
+        const totalPagado = pagos.reduce(
+          (sum: number, p: Pago) => sum + (p.monto || 0),
           0
         );
 
-        // ✅ Simple example conversion rate (adjust logic as needed)
-        const conversionRate =
-          totalExpedientes > 0
-            ? ((totalPagos / totalExpedientes) * 100).toFixed(1)
-            : "0";
+        // Sum all lote prices to get total receivable
+        const totalPrecio = lotes.reduce(
+          (sum: number, l: Lote) => sum + (l.precio || 0),
+          0
+        );
+
+        // Calculate percentage collected: (Total Pagado / Total Precio) * 100
+        const porcentajeCobrado =
+          totalPrecio > 0
+            ? ((totalPagado / totalPrecio) * 100)
+            : 0;
 
         // ✅ Update state
         setStats({
           usuarios: totalUsuarios,
           expedientes: totalExpedientes,
-          pagos: totalPagos,
-          conversion: parseFloat(conversionRate),
+          pagos: totalPagado,
+          porcentajeCobrado: porcentajeCobrado,
         });
       } catch (error) {
         console.error("Error fetching dashboard data:", error);
@@ -98,16 +112,16 @@ export default function Dashboard() {
     },
     {
       title: "Pagos Procesados",
-      value: `$${stats.pagos.toLocaleString()}`,
+      value: `$${stats.pagos.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       description: "Total de pagos recibidos",
       icon: CreditCard,
       color: "text-primary",
       bgColor: "bg-primary/10",
     },
     {
-      title: "Tasa de Conversión",
-      value: `${stats.conversion}%`,
-      description: "Últimos 30 días",
+      title: "Porcentaje Cobrado",
+      value: `${stats.porcentajeCobrado.toFixed(1)}%`,
+      description: "Del total de lotes",
       icon: TrendingUp,
       color: "text-accent",
       bgColor: "bg-accent/10",
