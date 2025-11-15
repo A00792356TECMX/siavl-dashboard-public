@@ -150,6 +150,46 @@ export default function CLG() {
         </Button>
       </div>
 
+      {/* Estadísticas - SIEMPRE VISIBLE */}
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card className="bg-card border-border/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Certificados</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-foreground">{estadisticas.total}</div>
+            <p className="text-xs text-muted-foreground mt-1">Registrados en el sistema</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-card border-border/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Vigentes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-green-500">{estadisticas.vigentes}</div>
+            <p className="text-xs text-muted-foreground mt-1">Activos y válidos</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-card border-border/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Vencidos</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-red-500">{estadisticas.vencidos}</div>
+            <p className="text-xs text-muted-foreground mt-1">Requieren renovación</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-card border-border/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Por Vencer</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-yellow-500">{estadisticas.porVencer}</div>
+            <p className="text-xs text-muted-foreground mt-1">Próximos 10 días</p>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Alertas */}
       {estadisticas.porVencer > 0 && (
         <Card className="border-yellow-500/50 bg-yellow-500/5">
@@ -163,42 +203,6 @@ export default function CLG() {
           </CardContent>
         </Card>
       )}
-
-      {/* Estadísticas */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Certificados</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-foreground">{estadisticas.total}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Vigentes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-500">{estadisticas.vigentes}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Vencidos</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-500">{estadisticas.vencidos}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Por Vencer</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-yellow-500">{estadisticas.porVencer}</div>
-          </CardContent>
-        </Card>
-      </div>
 
       <Card className="shadow-card border-border/50">
         <CardHeader>
