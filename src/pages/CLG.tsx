@@ -1,14 +1,17 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Pencil, Trash2, Loader2, Shield, AlertCircle } from 'lucide-react';
+import { Plus, Pencil, Trash2, Loader2, Shield, AlertCircle, Filter, Eye } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { CLGForm } from '@/components/CLGForm';
+import { CLGDetailModal } from '@/components/CLGDetailModal';
 import { TableControls } from '@/components/TableControls';
 import { TableHeaderCell } from '@/components/TableHeader';
 import { useTableData } from '@/hooks/useTableData';
+import { calcularEstadoCLG, formatearFecha } from '@/utils/clgHelpers';
 import {
   Dialog,
   DialogContent,
@@ -16,20 +19,29 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface Certificado {
   objectId: string;
-  folioCLG: string;
+  folioReal: string;
+  numeroEntrada: string;
   estado: string;
-  fechaEmision: string;
-  fechaVencimiento: string;
-  expedienteId?: string;
-  expedienteNumero?: string;
-  loteId?: string;
-  loteNumero?: string;
-  observaciones?: string;
-  created: string;
-  updated: string;
+  fechaEmision: string | number;
+  fechaVencimiento: string | number;
+  relacionExpedientes?: string;
+  expedienteFolio?: string;
+  clienteNombre?: string;
+  version?: number;
+  qrUrl?: string;
+  archivo?: string;
+  created: string | number;
+  updated: string | number;
 }
 
 export default function CLG() {
@@ -38,6 +50,8 @@ export default function CLG() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCertificado, setEditingCertificado] = useState<Certificado | null>(null);
   const { toast } = useToast();
+
+  const [filtroEstado, setFiltroEstado] = useState<string>('todos');
 
   const {
     pageData,
@@ -50,8 +64,11 @@ export default function CLG() {
     sortOrder,
     handleSort,
   } = useTableData({
-    data: certificados,
-    searchFields: ['folioCLG', 'expedienteNumero', 'loteNumero'],
+    data: certificados.filter(cert => {
+      if (filtroEstado === 'todos') return true;
+      return calcularEstadoCLG(cert.fechaVencimiento).estado === filtroEstado;
+    }),
+    searchFields: ['folioReal', 'numeroEntrada', 'expedienteFolio', 'clienteNombre'],
   });
 
   useEffect(() => {
@@ -111,52 +128,13 @@ export default function CLG() {
     loadCertificados();
   };
 
-  const getEstadoBadge = (estado: string, fechaVencimiento: string) => {
-    const isExpired = new Date(fechaVencimiento) < new Date();
-    
-    if (isExpired && estado === 'activo') {
-      return 'bg-red-500/10 text-red-500';
-    }
-    
-    const colors: Record<string, string> = {
-      activo: 'bg-green-500/10 text-green-500',
-      'por-vencer': 'bg-yellow-500/10 text-yellow-500',
-      vencido: 'bg-red-500/10 text-red-500',
-      cancelado: 'bg-gray-500/10 text-gray-500',
-    };
-    return colors[estado] || colors.activo;
-  };
 
-  const getEstadoDisplay = (estado: string, fechaVencimiento: string) => {
-    const isExpired = new Date(fechaVencimiento) < new Date();
-    if (isExpired && estado === 'activo') {
-      return 'vencido';
-    }
-    return estado;
-  };
-
-  const checkProximosVencer = () => {
-    const today = new Date();
-    const thirtyDaysFromNow = new Date();
-    thirtyDaysFromNow.setDate(today.getDate() + 30);
-
-    return certificados.filter(cert => {
-      const vencimiento = new Date(cert.fechaVencimiento);
-      return cert.estado === 'activo' && vencimiento > today && vencimiento <= thirtyDaysFromNow;
-    }).length;
-  };
 
   const estadisticas = {
     total: certificados.length,
-    activos: certificados.filter(c => {
-      const isExpired = new Date(c.fechaVencimiento) < new Date();
-      return c.estado === 'activo' && !isExpired;
-    }).length,
-    vencidos: certificados.filter(c => {
-      const isExpired = new Date(c.fechaVencimiento) < new Date();
-      return c.estado === 'vencido' || (c.estado === 'activo' && isExpired);
-    }).length,
-    proximosVencer: checkProximosVencer(),
+    vigentes: certificados.filter(c => calcularEstadoCLG(c.fechaVencimiento).estado === 'Vigente').length,
+    vencidos: certificados.filter(c => calcularEstadoCLG(c.fechaVencimiento).estado === 'Vencido').length,
+    porVencer: certificados.filter(c => calcularEstadoCLG(c.fechaVencimiento).estado === 'Por Vencer').length,
   };
 
   return (
@@ -173,13 +151,13 @@ export default function CLG() {
       </div>
 
       {/* Alertas */}
-      {estadisticas.proximosVencer > 0 && (
+      {estadisticas.porVencer > 0 && (
         <Card className="border-yellow-500/50 bg-yellow-500/5">
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
               <AlertCircle className="h-5 w-5 text-yellow-500" />
               <p className="text-sm text-foreground">
-                <span className="font-semibold">{estadisticas.proximosVencer}</span> certificado(s) próximos a vencer en los próximos 30 días
+                <span className="font-semibold">{estadisticas.porVencer}</span> certificado(s) próximos a vencer
               </p>
             </div>
           </CardContent>
@@ -198,10 +176,10 @@ export default function CLG() {
         </Card>
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Activos</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Vigentes</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-500">{estadisticas.activos}</div>
+            <div className="text-2xl font-bold text-green-500">{estadisticas.vigentes}</div>
           </CardContent>
         </Card>
         <Card>
@@ -217,7 +195,7 @@ export default function CLG() {
             <CardTitle className="text-sm font-medium text-muted-foreground">Por Vencer</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-yellow-500">{estadisticas.proximosVencer}</div>
+            <div className="text-2xl font-bold text-yellow-500">{estadisticas.porVencer}</div>
           </CardContent>
         </Card>
       </div>
@@ -230,6 +208,23 @@ export default function CLG() {
           </CardTitle>
         </CardHeader>
         <CardContent>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              <Select value={filtroEstado} onValueChange={setFiltroEstado}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos</SelectItem>
+                  <SelectItem value="Vigente">Vigentes</SelectItem>
+                  <SelectItem value="Por Vencer">Por Vencer</SelectItem>
+                  <SelectItem value="Vencido">Vencidos</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
           <TableControls
             search={search}
             onSearchChange={setSearch}
@@ -253,15 +248,23 @@ export default function CLG() {
                 <TableHeader>
                   <TableRow className="bg-muted/50">
                     <TableHeaderCell<Certificado>
-                      field="folioCLG"
-                      label="Folio CLG"
+                      field="folioReal"
+                      label="Folio Real"
                       sortable
                       currentSortField={sortField}
                       currentSortOrder={sortOrder}
                       onSort={handleSort}
                     />
                     <TableHeaderCell<Certificado>
-                      field="expedienteNumero"
+                      field="numeroEntrada"
+                      label="Número Entrada"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Certificado>
+                      field="expedienteFolio"
                       label="Expediente"
                       sortable
                       currentSortField={sortField}
@@ -269,8 +272,8 @@ export default function CLG() {
                       onSort={handleSort}
                     />
                     <TableHeaderCell<Certificado>
-                      field="loteNumero"
-                      label="Lote"
+                      field="clienteNombre"
+                      label="Cliente"
                       sortable
                       currentSortField={sortField}
                       currentSortOrder={sortOrder}
@@ -293,6 +296,14 @@ export default function CLG() {
                       onSort={handleSort}
                     />
                     <TableHeaderCell<Certificado>
+                      field="version"
+                      label="Versión"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Certificado>
                       field="estado"
                       label="Estado"
                       sortable
@@ -307,42 +318,52 @@ export default function CLG() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {pageData.map((certificado) => (
-                    <TableRow key={certificado.objectId} className="hover:bg-muted/30 transition-colors">
-                      <TableCell className="font-medium">{certificado.folioCLG}</TableCell>
-                      <TableCell>{certificado.expedienteNumero || 'N/A'}</TableCell>
-                      <TableCell>{certificado.loteNumero || 'N/A'}</TableCell>
-                      <TableCell>
-                        {new Date(certificado.fechaEmision).toLocaleDateString('es-MX')}
-                      </TableCell>
-                      <TableCell>
-                        {new Date(certificado.fechaVencimiento).toLocaleDateString('es-MX')}
-                      </TableCell>
-                      <TableCell>
-                        <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${getEstadoBadge(certificado.estado, certificado.fechaVencimiento)}`}>
-                          {getEstadoDisplay(certificado.estado, certificado.fechaVencimiento)}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleEdit(certificado)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDelete(certificado.objectId)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {pageData.map((certificado) => {
+                    const estadoInfo = calcularEstadoCLG(certificado.fechaVencimiento);
+                    
+                    return (
+                      <TableRow key={certificado.objectId} className="hover:bg-muted/30 transition-colors">
+                        <TableCell className="font-medium">{certificado.folioReal || 'N/A'}</TableCell>
+                        <TableCell>{certificado.numeroEntrada || 'N/A'}</TableCell>
+                        <TableCell>{certificado.expedienteFolio || 'N/A'}</TableCell>
+                        <TableCell>{certificado.clienteNombre || 'N/A'}</TableCell>
+                        <TableCell>
+                          {formatearFecha(certificado.fechaEmision)}
+                        </TableCell>
+                        <TableCell>
+                          {formatearFecha(certificado.fechaVencimiento)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={`${estadoInfo.bgColor} ${estadoInfo.color} border-0`}>
+                            v{certificado.version || 1}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={`${estadoInfo.bgColor} ${estadoInfo.color} border-0`}>
+                            {estadoInfo.estado}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleEdit(certificado)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDelete(certificado.objectId)}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
