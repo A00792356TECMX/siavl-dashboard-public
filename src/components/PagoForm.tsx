@@ -26,7 +26,7 @@ import { useToast } from "@/hooks/use-toast";
 
 // ✅ Schema aligned with Backendless
 const pagoSchema = z.object({
-  folioExpediente: z.string().min(1, "Folio requerido"),
+  relacionExpedientes: z.string().min(1, "Expediente requerido"),
   monto: z
     .string()
     .min(1, "Monto requerido")
@@ -36,8 +36,6 @@ const pagoSchema = z.object({
     ),
   metodoPago: z.string().nonempty("Método de pago requerido"),
   moneda: z.string().nonempty("Moneda requerida"),
-  referencia: z.string().optional(),
-  relacionExpedientes: z.string().optional(),
   observaciones: z.string().optional(),
 });
 
@@ -45,8 +43,11 @@ type PagoFormData = z.infer<typeof pagoSchema>;
 
 interface Expediente {
   objectId: string;
-  numeroExpediente: string;
-  clienteNombre?: string;
+  folioExpediente: string;
+  montoPorPagar: number;
+  relacionUsuarios?: {
+    nombre: string;
+  };
 }
 
 interface PagoFormProps {
@@ -58,23 +59,16 @@ interface PagoFormProps {
 export function PagoForm({ pago, onSuccess, onCancel }: PagoFormProps) {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
-  const [expedientes, setExpedientes] = useState<any[]>([]);
+  const [expedientes, setExpedientes] = useState<Expediente[]>([]);
   const [loadingData, setLoadingData] = useState(true);
-  const [expedientesPagos, setExpedientesPagos] = useState<Map<string, number>>(new Map());
-  const [lotesPrecios, setLotesPrecios] = useState<Map<string, number>>(new Map());
 
   const form = useForm<PagoFormData>({
     resolver: zodResolver(pagoSchema),
     defaultValues: {
-      folioExpediente: pago?.folioExpediente || "",
+      relacionExpedientes: pago?.relacionExpedientes?.objectId || pago?.relacionExpedientes || "",
       monto: pago?.monto?.toString() || "",
       metodoPago: pago?.metodoPago || "",
       moneda: pago?.moneda || "",
-      referencia: pago?.referencia || "",
-      relacionExpedientes:
-        pago?.relacionExpedientes?.objectId ||
-        pago?.relacionExpedientes ||
-        "none",
       observaciones: pago?.observaciones || "",
     },
   });
@@ -87,42 +81,17 @@ export function PagoForm({ pago, onSuccess, onCancel }: PagoFormProps) {
     try {
       setLoadingData(true);
 
-      // Load all data in parallel
-      const [expedientesData, pagosData, lotesData] = await Promise.all([
-        api.getAll<any>("Expedientes"),
-        api.getAll<any>("Pagos"),
-        api.getAll<any>("Lotes")
-      ]);
-
-      // Calculate total paid per expediente
-      const pagosPorExpediente = new Map<string, number>();
-      pagosData.forEach((p: any) => {
-        // Exclude current pago if editing
-        if (pago?.objectId && p.objectId === pago.objectId) return;
-
-        const current = pagosPorExpediente.get(p.folioExpediente) || 0;
-        pagosPorExpediente.set(p.folioExpediente, current + (p.monto || 0));
+      // Load expedientes with relations
+      const expedientesData = await api.getAll<Expediente>("Expedientes", {
+        loadRelations: "relacionUsuarios"
       });
 
-      // Map lote prices
-      const preciosPorLote = new Map<string, number>();
-      lotesData.forEach((l: any) => {
-        preciosPorLote.set(l.numeroLote, l.precio || 0);
-      });
-
-      // Filter expedientes with pending debt
-      const expedientesConAdeudo = expedientesData.filter((exp: any) => {
-        const precioLote = preciosPorLote.get(exp.lote) || 0;
-        const montoPagado = pagosPorExpediente.get(exp.folioExpediente) || 0;
-        const adeudo = precioLote - montoPagado;
-
-        // Include if has debt OR is the current expediente (when editing)
-        return adeudo > 0 || (pago?.folioExpediente === exp.folioExpediente);
+      // Filter expedientes with pending debt (montoPorPagar > 0)
+      const expedientesConAdeudo = expedientesData.filter((exp: Expediente) => {
+        return exp.montoPorPagar > 0 || (pago?.relacionExpedientes?.objectId === exp.objectId);
       });
 
       setExpedientes(expedientesConAdeudo);
-      setExpedientesPagos(pagosPorExpediente);
-      setLotesPrecios(preciosPorLote);
     } catch {
       toast({
         title: "Error",
@@ -134,14 +103,35 @@ export function PagoForm({ pago, onSuccess, onCancel }: PagoFormProps) {
     }
   };
 
+  const generateReferencia = async (): Promise<string> => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    
+    // Get all pagos to find the highest number for this month
+    const allPagos = await api.getAll<any>("Pagos");
+    const prefix = `PAG-${year}-${month}-`;
+    
+    const numbersThisMonth = allPagos
+      .filter((p: any) => p.referencia?.startsWith(prefix))
+      .map((p: any) => {
+        const parts = p.referencia.split('-');
+        return parseInt(parts[3] || '0');
+      })
+      .filter((n: number) => !isNaN(n));
+    
+    const maxNumber = numbersThisMonth.length > 0 ? Math.max(...numbersThisMonth) : 0;
+    const nextNumber = String(maxNumber + 1).padStart(5, '0');
+    
+    return `${prefix}${nextNumber}`;
+  };
+
   const onSubmit = async (data: PagoFormData) => {
     try {
       setIsLoading(true);
 
-      console.log("📋 Form data received:", data);
-
       // Find the expediente data
-      const expediente = expedientes.find((exp: any) => exp.folioExpediente === data.folioExpediente);
+      const expediente = expedientes.find((exp: Expediente) => exp.objectId === data.relacionExpedientes);
 
       if (!expediente) {
         toast({
@@ -153,49 +143,51 @@ export function PagoForm({ pago, onSuccess, onCancel }: PagoFormProps) {
         return;
       }
 
-      // Calculate current debt and validate amount
-      const precioLote = lotesPrecios.get(expediente.lote) || 0;
-      const montoPagado = expedientesPagos.get(data.folioExpediente) || 0;
-      const adeudoActual = precioLote - montoPagado;
+      // Validate amount against debt
       const nuevoMonto = parseFloat(data.monto);
-
-      if (nuevoMonto > adeudoActual) {
+      if (nuevoMonto > expediente.montoPorPagar) {
         toast({
           title: "Error",
-          description: `El monto excede el adeudo. Adeudo pendiente: $${adeudoActual.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          description: `El monto excede el adeudo. Adeudo pendiente: $${expediente.montoPorPagar.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
           variant: "destructive",
         });
         setIsLoading(false);
         return;
       }
 
+      // Generate referencia only for new pagos
+      const referencia = pago?.objectId ? pago.referencia : await generateReferencia();
+
       const payload = {
-        folioExpediente: data.folioExpediente,
+        folioExpediente: expediente.folioExpediente,
         monto: nuevoMonto,
-        metodoPago: data.metodoPago, // Send as string, not array
-        moneda: data.moneda, // Send as string, not array
-        referencia: data.referencia || "",
-        relacionExpedientes:
-          data.relacionExpedientes === "none"
-            ? null
-            : data.relacionExpedientes,
+        metodoPago: data.metodoPago,
+        moneda: data.moneda,
+        referencia: referencia,
+        relacionExpedientes: data.relacionExpedientes,
         observaciones: data.observaciones || "",
       };
 
-      console.log("✅ Payload final enviado:", payload);
-
       if (pago?.objectId) {
         await api.update("Pagos", pago.objectId, payload);
-        // Success toast already shown in apiRequest
       } else {
         await api.create("Pagos", payload);
-        // Success toast already shown in apiRequest
       }
 
+      toast({
+        title: "Éxito",
+        description: "Pago registrado correctamente",
+        className: "bg-green-50 border-green-200",
+      });
+
       onSuccess();
-    } catch (err) {
+    } catch (err: any) {
       console.error("❌ Error guardando pago:", err);
-      // Error toast already shown in apiRequest
+      toast({
+        title: "Error",
+        description: err.message || "No se pudo registrar el pago",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -212,37 +204,37 @@ export function PagoForm({ pago, onSuccess, onCancel }: PagoFormProps) {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Folio Expediente */}
+        <div className="grid grid-cols-1 gap-4">
+          {/* Expediente Selector */}
           <FormField
             control={form.control}
-            name="folioExpediente"
+            name="relacionExpedientes"
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Expediente</FormLabel>
                 <Select
                   onValueChange={field.onChange}
                   value={field.value}
+                  disabled={!!pago?.objectId}
                 >
                   <FormControl>
                     <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar expediente" />
+                      <SelectValue placeholder="Selecciona un expediente" />
                     </SelectTrigger>
                   </FormControl>
-                  <SelectContent>
+                  <SelectContent className="max-h-[300px]">
                     {expedientes.length === 0 ? (
                       <SelectItem value="no-disponible" disabled>
                         No hay expedientes con adeudo
                       </SelectItem>
                     ) : (
-                      expedientes.map((exp: any) => {
-                        const precioLote = lotesPrecios.get(exp.lote) || 0;
-                        const montoPagado = expedientesPagos.get(exp.folioExpediente) || 0;
-                        const adeudo = precioLote - montoPagado;
+                      expedientes.map((exp: Expediente) => {
+                        const clienteNombre = exp.relacionUsuarios?.nombre || "Sin cliente";
+                        const adeudo = exp.montoPorPagar;
 
                         return (
-                          <SelectItem key={exp.objectId} value={exp.folioExpediente}>
-                            {exp.folioExpediente} - {exp.cliente} (Adeudo: ${adeudo.toLocaleString('es-MX', { minimumFractionDigits: 2 })})
+                          <SelectItem key={exp.objectId} value={exp.objectId}>
+                            {exp.folioExpediente} – {clienteNombre} (Adeudo: ${adeudo.toLocaleString('es-MX', { minimumFractionDigits: 2 })})
                           </SelectItem>
                         );
                       })
@@ -326,55 +318,6 @@ export function PagoForm({ pago, onSuccess, onCancel }: PagoFormProps) {
                     <SelectItem value="EU">EU</SelectItem>
                   </SelectContent>
                 </Select>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          {/* Expediente Asociado - Hidden to avoid confusion */}
-          <FormField
-            control={form.control}
-            name="relacionExpedientes"
-            render={({ field }) => (
-              <FormItem className="hidden">
-                <FormLabel>Expediente Asociado</FormLabel>
-                <Select
-                  onValueChange={field.onChange}
-                  defaultValue={field.value || "none"}
-                >
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecciona un expediente" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    <SelectItem value="none">Sin asignar</SelectItem>
-                    {expedientes.map((exp) => (
-                      <SelectItem key={exp.objectId} value={exp.objectId}>
-                        {exp.numeroExpediente}
-                        {exp.clienteNombre && ` - ${exp.clienteNombre}`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          {/* Referencia */}
-          <FormField
-            control={form.control}
-            name="referencia"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Referencia</FormLabel>
-                <FormControl>
-                  <Input
-                    placeholder="Número de referencia o transacción"
-                    {...field}
-                  />
-                </FormControl>
                 <FormMessage />
               </FormItem>
             )}
