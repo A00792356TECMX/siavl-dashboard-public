@@ -35,11 +35,10 @@ type DocumentoFormData = z.infer<typeof documentoSchema>;
 interface Expediente {
   objectId: string;
   folioExpediente: string;
+  cliente: string;
   lote: string;
-  relacionUsuarios?: {
-    objectId: string;
-    nombre: string;
-  };
+  relacionUsuarios?: string;
+  relacionLotes?: string;
   montoPorPagar?: number;
 }
 
@@ -83,6 +82,7 @@ export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormP
   const [isUploading, setIsUploading] = useState(false);
   const [expedientes, setExpedientes] = useState<Expediente[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [clientesMap, setClientesMap] = useState<Map<string, Cliente>>(new Map());
   const [loadingData, setLoadingData] = useState(true);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -107,24 +107,34 @@ export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormP
       setLoadingData(true);
       
       const [expedientesData, pagosData, lotesData, clientesData] = await Promise.all([
-        api.getAll<Expediente>('Expedientes', {
-          loadRelations: 'relacionUsuarios,relacionLotes',
-        }).catch(() => []),
+        api.getAll<Expediente>('Expedientes').catch(() => []),
         api.getAll<Pago>('Pagos').catch(() => []),
         api.getAll<Lote>('Lotes').catch(() => []),
         api.getAll<Cliente>('Usuarios').catch(() => []),
       ]);
 
+      // Mapear clientes por objectId para búsqueda rápida
+      const clientesById = new Map<string, Cliente>();
+      clientesData.forEach((cliente) => {
+        clientesById.set(cliente.objectId, cliente);
+      });
+
+      // Mapear precios de lotes por numeroLote
+      const preciosPorLote = new Map<string, number>();
+      lotesData.forEach((lote) => {
+        preciosPorLote.set(lote.numeroLote, lote.precio || 0);
+      });
+
+      // Calcular adeudo para cada expediente
       const expedientesConAdeudo = expedientesData.map(exp => {
-        // Calcular pagos realizados para este expediente usando folioExpediente
+        // Calcular pagos realizados para este expediente
         const pagosFiltrados = pagosData.filter(
           p => p.folioExpediente === exp.folioExpediente
         );
         const montoPagado = pagosFiltrados.reduce((sum, p) => sum + (p.monto || 0), 0);
         
-        // Buscar el lote asociado usando el campo lote del expediente
-        const loteAsociado = lotesData.find(l => l.numeroLote === exp.lote);
-        const precioLote = loteAsociado?.precio || 0;
+        // Obtener precio del lote
+        const precioLote = preciosPorLote.get(exp.lote) || 0;
         const adeudo = Math.max(0, precioLote - montoPagado);
 
         return {
@@ -135,6 +145,7 @@ export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormP
 
       setExpedientes(expedientesConAdeudo);
       setClientes(clientesData);
+      setClientesMap(clientesById);
     } catch (error) {
       toast({
         title: 'Error',
@@ -388,12 +399,20 @@ export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormP
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {expedientes.map((exp) => (
-                    <SelectItem key={exp.objectId} value={exp.objectId}>
-                      {exp.folioExpediente} – {exp.relacionUsuarios?.nombre || 'Sin cliente'}{' '}
-                      (Adeudo: ${(exp.montoPorPagar || 0).toLocaleString()})
-                    </SelectItem>
-                  ))}
+                  {expedientes.map((exp) => {
+                    // Obtener el nombre del cliente usando el mapa
+                    const cliente = exp.relacionUsuarios 
+                      ? clientesMap.get(exp.relacionUsuarios) 
+                      : null;
+                    const nombreCliente = cliente?.nombre || exp.cliente || 'Sin cliente';
+                    
+                    return (
+                      <SelectItem key={exp.objectId} value={exp.objectId}>
+                        {exp.folioExpediente} – {nombreCliente}{' '}
+                        (Adeudo: ${(exp.montoPorPagar || 0).toLocaleString()})
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
               <FormMessage />
