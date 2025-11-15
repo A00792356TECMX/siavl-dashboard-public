@@ -6,6 +6,9 @@ import { Plus, Pencil, Trash2, Loader2, MapPin } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { LoteForm } from '@/components/LoteForm';
+import { TableControls } from '@/components/TableControls';
+import { TableHeaderCell } from '@/components/TableHeader';
+import { useTableData } from '@/hooks/useTableData';
 import {
   Dialog,
   DialogContent,
@@ -33,6 +36,24 @@ export default function Lotes() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingLote, setEditingLote] = useState<Lote | null>(null);
   const { toast } = useToast();
+
+  const {
+    pageData,
+    totalResults,
+    page,
+    pageSize,
+    totalPages,
+    setPage,
+    setPageSize,
+    search,
+    setSearch,
+    sortField,
+    sortOrder,
+    handleSort,
+  } = useTableData({
+    data: lotes,
+    searchFields: ['numeroLote', 'manzana', 'ubicacion'],
+  });
 
   useEffect(() => {
     loadLotes();
@@ -203,34 +224,88 @@ export default function Lotes() {
           </CardTitle>
         </CardHeader>
         <CardContent>
+          <TableControls
+            search={search}
+            onSearchChange={setSearch}
+            pageSize={pageSize}
+            onPageSizeChange={setPageSize}
+            totalResults={totalResults}
+            currentPageResults={pageData.length}
+          />
+
           {isLoading ? (
             <div className="flex justify-center items-center h-64">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
-          ) : lotes.length === 0 ? (
+          ) : totalResults === 0 ? (
             <div className="text-center text-muted-foreground py-12">
-              No hay lotes registrados
+              {lotes.length === 0 ? 'No hay lotes registrados' : 'No se encontraron resultados'}
             </div>
           ) : (
             <div className="rounded-md border border-border/50">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/50">
-                    <TableHead>Número</TableHead>
-                    <TableHead>Manzana</TableHead>
-                    <TableHead>Superficie</TableHead>
-                    <TableHead>Precio</TableHead>
-                    <TableHead>Ubicación</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
+                    <TableHeaderCell<Lote>
+                      field="numeroLote"
+                      label="Número"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Lote>
+                      field="manzana"
+                      label="Manzana"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Lote>
+                      field="superficie"
+                      label="Superficie"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Lote>
+                      field="precio"
+                      label="Precio"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Lote>
+                      field="ubicacion"
+                      label="Ubicación"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Lote>
+                      field="activo"
+                      label="Estado"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Lote>
+                      label="Acciones"
+                      className="text-right"
+                    />
                   </TableRow>
                 </TableHeader>
 
                 <TableBody>
-                  {lotes.map((lote) => {
+                  {pageData.map((lote) => {
                     const estado = getActivo(lote);
                     return (
-                      <TableRow key={lote.objectId} className="hover:bg-muted/30">
+                      <TableRow key={lote.objectId} className="hover:bg-muted/30 transition-colors">
                         <TableCell className="font-medium">{lote.numeroLote}</TableCell>
                         <TableCell>{lote.manzana}</TableCell>
                         <TableCell>{lote.superficie} m²</TableCell>

@@ -6,6 +6,9 @@ import { Plus, Pencil, Trash2, Loader2, FileText, Download, Eye } from 'lucide-r
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { DocumentoForm } from '@/components/DocumentoForm';
+import { TableControls } from '@/components/TableControls';
+import { TableHeaderCell } from '@/components/TableHeader';
+import { useTableData } from '@/hooks/useTableData';
 import {
   Dialog,
   DialogContent,
@@ -34,6 +37,24 @@ export default function Documentos() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingDocumento, setEditingDocumento] = useState<Documento | null>(null);
   const { toast } = useToast();
+
+  const {
+    pageData,
+    totalResults,
+    page,
+    pageSize,
+    totalPages,
+    setPage,
+    setPageSize,
+    search,
+    setSearch,
+    sortField,
+    sortOrder,
+    handleSort,
+  } = useTableData({
+    data: documentos,
+    searchFields: ['nombre', 'tipo', 'expedienteNumero'],
+  });
 
   useEffect(() => {
     loadDocumentos();
@@ -186,30 +207,77 @@ export default function Documentos() {
           </CardTitle>
         </CardHeader>
         <CardContent>
+          <TableControls
+            search={search}
+            onSearchChange={setSearch}
+            pageSize={pageSize}
+            onPageSizeChange={setPageSize}
+            totalResults={totalResults}
+            currentPageResults={pageData.length}
+          />
+
           {isLoading ? (
             <div className="flex justify-center items-center h-64">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
-          ) : documentos.length === 0 ? (
+          ) : totalResults === 0 ? (
             <div className="text-center text-muted-foreground py-12">
-              No hay documentos registrados
+              {documentos.length === 0 ? 'No hay documentos registrados' : 'No se encontraron resultados'}
             </div>
           ) : (
             <div className="rounded-md border border-border/50">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/50">
-                    <TableHead>Nombre</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Expediente</TableHead>
-                    <TableHead>Tamaño</TableHead>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
+                    <TableHeaderCell<Documento>
+                      field="nombre"
+                      label="Nombre"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Documento>
+                      field="tipo"
+                      label="Tipo"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Documento>
+                      field="expedienteNumero"
+                      label="Expediente"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Documento>
+                      field="tamanio"
+                      label="Tamaño"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Documento>
+                      field="fechaSubida"
+                      label="Fecha"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Documento>
+                      label="Acciones"
+                      className="text-right"
+                    />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {documentos.map((documento) => (
-                    <TableRow key={documento.objectId} className="hover:bg-muted/30">
+                  {pageData.map((documento) => (
+                    <TableRow key={documento.objectId} className="hover:bg-muted/30 transition-colors">
                       <TableCell className="font-medium max-w-[200px] truncate">
                         {documento.nombre}
                       </TableCell>

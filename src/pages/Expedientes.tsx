@@ -6,6 +6,9 @@ import { Plus, Pencil, Trash2, Loader2, FileText } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { ExpedienteForm } from '@/components/ExpedienteForm';
+import { TableControls } from '@/components/TableControls';
+import { TableHeaderCell } from '@/components/TableHeader';
+import { useTableData } from '@/hooks/useTableData';
 import {
   Dialog,
   DialogContent,
@@ -33,6 +36,24 @@ export default function Expedientes() {
   const [pagosData, setPagosData] = useState<Map<string, number>>(new Map());
   const [lotesData, setLotesData] = useState<Map<string, number>>(new Map());
   const { toast } = useToast();
+
+  const {
+    pageData,
+    totalResults,
+    page,
+    pageSize,
+    totalPages,
+    setPage,
+    setPageSize,
+    search,
+    setSearch,
+    sortField,
+    sortOrder,
+    handleSort,
+  } = useTableData({
+    data: expedientes,
+    searchFields: ['folioExpediente', 'cliente', 'lote'],
+  });
 
   useEffect(() => {
     loadExpedientes();
@@ -143,36 +164,89 @@ export default function Expedientes() {
           </CardTitle>
         </CardHeader>
         <CardContent>
+          <TableControls
+            search={search}
+            onSearchChange={setSearch}
+            pageSize={pageSize}
+            onPageSizeChange={setPageSize}
+            totalResults={totalResults}
+            currentPageResults={pageData.length}
+          />
+
           {isLoading ? (
             <div className="flex justify-center items-center h-64">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
-          ) : expedientes.length === 0 ? (
+          ) : totalResults === 0 ? (
             <div className="text-center text-muted-foreground py-12">
-              No hay expedientes registrados
+              {expedientes.length === 0 ? 'No hay expedientes registrados' : 'No se encontraron resultados'}
             </div>
           ) : (
             <div className="rounded-md border border-border/50">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/50">
-                    <TableHead>Número</TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Lote</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead className="text-right">Monto Pagado</TableHead>
-                    <TableHead className="text-right">Monto por Pagar</TableHead>
-                    <TableHead>Fecha Apertura</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
+                    <TableHeaderCell<Expediente>
+                      field="folioExpediente"
+                      label="Número"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Expediente>
+                      field="cliente"
+                      label="Cliente"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Expediente>
+                      field="lote"
+                      label="Lote"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Expediente>
+                      field="activo"
+                      label="Estado"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Expediente>
+                      label="Monto Pagado"
+                      className="text-right"
+                    />
+                    <TableHeaderCell<Expediente>
+                      label="Monto por Pagar"
+                      className="text-right"
+                    />
+                    <TableHeaderCell<Expediente>
+                      field="created"
+                      label="Fecha Apertura"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Expediente>
+                      label="Acciones"
+                      className="text-right"
+                    />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {expedientes.map((expediente) => {
+                  {pageData.map((expediente) => {
                     const montoPagado = getMontoPagado(expediente.folioExpediente);
                     const montoPorPagar = getMontoPorPagar(expediente.folioExpediente, expediente.lote);
 
                     return (
-                      <TableRow key={expediente.objectId} className="hover:bg-muted/30">
+                      <TableRow key={expediente.objectId} className="hover:bg-muted/30 transition-colors">
                         <TableCell className="font-medium">{expediente.folioExpediente}</TableCell>
                         <TableCell>{expediente.cliente || 'N/A'}</TableCell>
                         <TableCell>{expediente.lote || 'Sin asignar'}</TableCell>

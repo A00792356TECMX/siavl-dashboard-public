@@ -7,6 +7,8 @@ import { useToast } from '@/hooks/use-toast';
 import { api } from '@/lib/api';
 import { format, differenceInDays } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { TableControls } from '@/components/TableControls';
+import { useTableData } from '@/hooks/useTableData';
 
 interface CLG {
   objectId: string;
@@ -47,6 +49,18 @@ export default function Notificaciones() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+
+  const {
+    pageData,
+    totalResults,
+    search,
+    setSearch,
+    pageSize,
+    setPageSize,
+  } = useTableData({
+    data: notifications,
+    searchFields: ['title', 'description', 'type'],
+  });
 
   useEffect(() => {
     loadNotifications();

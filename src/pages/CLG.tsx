@@ -6,6 +6,9 @@ import { Plus, Pencil, Trash2, Loader2, Shield, AlertCircle } from 'lucide-react
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { CLGForm } from '@/components/CLGForm';
+import { TableControls } from '@/components/TableControls';
+import { TableHeaderCell } from '@/components/TableHeader';
+import { useTableData } from '@/hooks/useTableData';
 import {
   Dialog,
   DialogContent,
@@ -35,6 +38,21 @@ export default function CLG() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCertificado, setEditingCertificado] = useState<Certificado | null>(null);
   const { toast } = useToast();
+
+  const {
+    pageData,
+    totalResults,
+    search,
+    setSearch,
+    pageSize,
+    setPageSize,
+    sortField,
+    sortOrder,
+    handleSort,
+  } = useTableData({
+    data: certificados,
+    searchFields: ['folioCLG', 'expedienteNumero', 'loteNumero'],
+  });
 
   useEffect(() => {
     loadCertificados();
@@ -212,31 +230,85 @@ export default function CLG() {
           </CardTitle>
         </CardHeader>
         <CardContent>
+          <TableControls
+            search={search}
+            onSearchChange={setSearch}
+            pageSize={pageSize}
+            onPageSizeChange={setPageSize}
+            totalResults={totalResults}
+            currentPageResults={pageData.length}
+          />
+
           {isLoading ? (
             <div className="flex justify-center items-center h-64">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
-          ) : certificados.length === 0 ? (
+          ) : totalResults === 0 ? (
             <div className="text-center text-muted-foreground py-12">
-              No hay certificados registrados
+              {certificados.length === 0 ? 'No hay certificados registrados' : 'No se encontraron resultados'}
             </div>
           ) : (
             <div className="rounded-md border border-border/50">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/50">
-                    <TableHead>Folio CLG</TableHead>
-                    <TableHead>Expediente</TableHead>
-                    <TableHead>Lote</TableHead>
-                    <TableHead>Emisión</TableHead>
-                    <TableHead>Vencimiento</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
+                    <TableHeaderCell<Certificado>
+                      field="folioCLG"
+                      label="Folio CLG"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Certificado>
+                      field="expedienteNumero"
+                      label="Expediente"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Certificado>
+                      field="loteNumero"
+                      label="Lote"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Certificado>
+                      field="fechaEmision"
+                      label="Emisión"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Certificado>
+                      field="fechaVencimiento"
+                      label="Vencimiento"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Certificado>
+                      field="estado"
+                      label="Estado"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Certificado>
+                      label="Acciones"
+                      className="text-right"
+                    />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {certificados.map((certificado) => (
-                    <TableRow key={certificado.objectId} className="hover:bg-muted/30">
+                  {pageData.map((certificado) => (
+                    <TableRow key={certificado.objectId} className="hover:bg-muted/30 transition-colors">
                       <TableCell className="font-medium">{certificado.folioCLG}</TableCell>
                       <TableCell>{certificado.expedienteNumero || 'N/A'}</TableCell>
                       <TableCell>{certificado.loteNumero || 'N/A'}</TableCell>

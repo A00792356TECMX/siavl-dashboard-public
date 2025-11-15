@@ -6,6 +6,9 @@ import { Loader2, Activity, RefreshCw, Filter } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { getActionLabel, getTableLabel } from '@/lib/logger';
+import { TableControls } from '@/components/TableControls';
+import { TableHeaderCell } from '@/components/TableHeader';
+import { useTableData } from '@/hooks/useTableData';
 import {
   Select,
   SelectContent,
@@ -31,6 +34,27 @@ export default function Logs() {
   const [filtroTabla, setFiltroTabla] = useState<string>('todas');
   const [filtroAccion, setFiltroAccion] = useState<string>('todas');
   const { toast } = useToast();
+
+  const logsFilterados = logs.filter(log => {
+    if (filtroTabla !== 'todas' && log.tabla !== filtroTabla) return false;
+    if (filtroAccion !== 'todas' && log.accion !== filtroAccion) return false;
+    return true;
+  });
+
+  const {
+    pageData,
+    totalResults,
+    search,
+    setSearch,
+    pageSize,
+    setPageSize,
+    sortField,
+    sortOrder,
+    handleSort,
+  } = useTableData({
+    data: logsFilterados,
+    searchFields: ['usuario', 'tabla', 'accion', 'detalles'],
+  });
 
   useEffect(() => {
     loadLogs();
@@ -63,12 +87,6 @@ export default function Logs() {
     };
     return colors[accion] || 'bg-gray-500/10 text-gray-500';
   };
-
-  const logsFilterados = logs.filter(log => {
-    if (filtroTabla !== 'todas' && log.tabla !== filtroTabla) return false;
-    if (filtroAccion !== 'todas' && log.accion !== filtroAccion) return false;
-    return true;
-  });
 
   const estadisticas = {
     total: logs.length,
