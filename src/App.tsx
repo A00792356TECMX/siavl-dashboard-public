@@ -8,6 +8,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Usuarios from "./pages/Usuarios";
+import UsuariosSistema from "./pages/UsuariosSistema";
 import Expedientes from "./pages/Expedientes";
 import Pagos from "./pages/Pagos";
 import Lotes from "./pages/Lotes";
@@ -99,6 +100,14 @@ const App = () => (
               element={
                 <DashboardLayout>
                   <Logs />
+                </DashboardLayout>
+              }
+            />
+            <Route
+              path="/dashboard/usuarios-sistema"
+              element={
+                <DashboardLayout>
+                  <UsuariosSistema />
                 </DashboardLayout>
               }
             />

@@ -1,4 +1,4 @@
-import { Home, Users, FolderOpen, CreditCard, MapPin, FileText, Shield, Bell, Activity, LogOut } from 'lucide-react';
+import { Home, Users, FolderOpen, CreditCard, MapPin, FileText, Shield, Bell, Activity, LogOut, UserCog } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -29,6 +29,10 @@ const systemItems = [
   { title: 'CLG', url: '/dashboard/clg', icon: Shield },
   { title: 'Notificaciones', url: '/dashboard/notificaciones', icon: Bell },
   { title: 'Logs', url: '/dashboard/logs', icon: Activity },
+];
+
+const adminItems = [
+  { title: 'Usuarios del Sistema', url: '/dashboard/usuarios-sistema', icon: UserCog },
 ];
 
 export function AppSidebar() {
@@ -98,6 +102,30 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {user?.role === 'Admin' && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-sidebar-foreground/70">Administración</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {adminItems.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild>
+                      <NavLink
+                        to={item.url}
+                        className="flex items-center gap-3 px-3 py-2 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                        activeClassName="bg-sidebar-accent font-medium"
+                      >
+                        <item.icon className="h-4 w-4 flex-shrink-0" />
+                        {!isCollapsed && <span>{item.title}</span>}
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="p-4 border-t border-sidebar-border">
