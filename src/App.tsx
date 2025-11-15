@@ -7,7 +7,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
-import Usuarios from "./pages/Usuarios";
+import Clientes from "./pages/Clientes";
 import UsuariosSistema from "./pages/UsuariosSistema";
 import Expedientes from "./pages/Expedientes";
 import Pagos from "./pages/Pagos";
@@ -40,10 +40,10 @@ const App = () => (
               }
             />
             <Route
-              path="/dashboard/usuarios"
+              path="/dashboard/clientes"
               element={
                 <DashboardLayout>
-                  <Usuarios />
+                  <Clientes />
                 </DashboardLayout>
               }
             />
