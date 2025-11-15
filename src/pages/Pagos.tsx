@@ -26,11 +26,18 @@ interface Pago {
   objectId: string;
   folioExpediente: string;
   monto: number;
-  metodoPago: string; // Changed from string[] to string
-  moneda: string; // Changed from string[] to string
+  metodoPago: string;
+  moneda: string;
   referencia?: string;
   observaciones?: string;
   created?: number;
+  relacionExpedientes?: {
+    objectId: string;
+    folioExpediente: string;
+    relacionUsuarios?: {
+      nombre: string;
+    };
+  };
 }
 
 export default function Pagos() {
@@ -55,7 +62,7 @@ export default function Pagos() {
     handleSort,
   } = useTableData({
     data: pagos,
-    searchFields: ['folioExpediente', 'metodoPago', 'moneda', 'referencia'],
+    searchFields: ['folioExpediente', 'metodoPago', 'moneda'],
   });
 
   useEffect(() => {
@@ -65,7 +72,9 @@ export default function Pagos() {
   const loadPagos = async () => {
     try {
       setLoading(true);
-      const data = await api.getAll<Pago>("Pagos");
+      const data = await api.getAll<Pago>("Pagos", {
+        loadRelations: "relacionExpedientes,relacionExpedientes.relacionUsuarios"
+      });
       setPagos(data);
     } catch {
       toast({
@@ -152,6 +161,7 @@ export default function Pagos() {
                 currentSortOrder={sortOrder}
                 onSort={handleSort}
               />
+              <TableHead>Cliente</TableHead>
               <TableHeaderCell<Pago>
                 field="monto"
                 label="Monto"
@@ -177,14 +187,6 @@ export default function Pagos() {
                 onSort={handleSort}
               />
               <TableHeaderCell<Pago>
-                field="referencia"
-                label="Referencia"
-                sortable
-                currentSortField={sortField}
-                currentSortOrder={sortOrder}
-                onSort={handleSort}
-              />
-              <TableHeaderCell<Pago>
                 label="Acciones"
                 className="text-right"
               />
@@ -200,11 +202,15 @@ export default function Pagos() {
             ) : (
               pageData.map((pago) => (
                 <TableRow key={pago.objectId} className="hover:bg-muted/30 transition-colors">
-                  <TableCell className="font-medium">{pago.folioExpediente}</TableCell>
+                  <TableCell className="font-medium">
+                    {pago.relacionExpedientes?.folioExpediente || pago.folioExpediente}
+                  </TableCell>
+                  <TableCell>
+                    {pago.relacionExpedientes?.relacionUsuarios?.nombre || "-"}
+                  </TableCell>
                   <TableCell>${pago.monto.toFixed(2)}</TableCell>
                   <TableCell>{pago.metodoPago || "N/A"}</TableCell>
                   <TableCell>{pago.moneda || "N/A"}</TableCell>
-                  <TableCell>{pago.referencia || "-"}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
                       <Button
