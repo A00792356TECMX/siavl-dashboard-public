@@ -1,8 +1,28 @@
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Pencil, Trash2, Loader2, FileText, Download, Eye } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  Loader2,
+  FileText,
+  Download,
+  Eye,
+  File,
+  FileImage,
+  Filter,
+  X,
+} from 'lucide-react';
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { DocumentoForm } from '@/components/DocumentoForm';
@@ -16,27 +36,97 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface Documento {
   objectId: string;
-  nombre: string;
+  nombreArchivo: string;
+  nombreOriginal: string;
   tipo: string;
-  descripcion?: string;
-  expedienteId?: string;
-  expedienteNumero?: string;
-  archivoUrl?: string;
-  tamanio?: number;
-  fechaSubida: string;
+  extension: string;
+  tamanoKB: number;
+  estadoDocumento: string;
+  version: number;
+  url: string;
+  expedienteFolio: string;
+  observaciones?: string;
+  relacionExpedientes?: {
+    objectId: string;
+    folioExpediente: string;
+    relacionUsuarios?: {
+      nombre: string;
+    };
+  };
+  relacionClientes?: {
+    objectId: string;
+    nombre: string;
+  };
+  relacionUsers?: {
+    email: string;
+  };
   created: string;
   updated: string;
 }
+
+const TIPOS_DOCUMENTO = [
+  'Contrato',
+  'Escritura',
+  'Acuse',
+  'CLG',
+  'Identificación',
+  'Comprobante',
+  'Otro',
+];
+
+const ESTADOS_DOCUMENTO = ['Activo', 'Reemplazado', 'Eliminado'];
 
 export default function Documentos() {
   const [documentos, setDocumentos] = useState<Documento[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingDocumento, setEditingDocumento] = useState<Documento | null>(null);
+  const [deletingDocumento, setDeletingDocumento] = useState<Documento | null>(null);
+  const [viewingDocumento, setViewingDocumento] = useState<Documento | null>(null);
+
+  const [filterTipo, setFilterTipo] = useState<string>('');
+  const [filterCliente, setFilterCliente] = useState<string>('');
+  const [filterExpediente, setFilterExpediente] = useState<string>('');
+  const [filterEstado, setFilterEstado] = useState<string>('Activo');
+
   const { toast } = useToast();
+
+  const clientesUnicos = Array.from(
+    new Set(
+      documentos
+        .map(d => d.relacionClientes?.nombre)
+        .filter(Boolean)
+    )
+  ).sort();
+
+  const expedientesUnicos = Array.from(
+    new Set(
+      documentos
+        .map(d => d.relacionExpedientes?.folioExpediente)
+        .filter(Boolean)
+    )
+  ).sort();
+
+  const documentosFiltrados = documentos.filter(doc => {
+    if (filterTipo && doc.tipo !== filterTipo) return false;
+    if (filterCliente && doc.relacionClientes?.nombre !== filterCliente) return false;
+    if (filterExpediente && doc.relacionExpedientes?.folioExpediente !== filterExpediente) return false;
+    if (filterEstado && doc.estadoDocumento !== filterEstado) return false;
+    return true;
+  });
 
   const {
     pageData,
@@ -52,8 +142,8 @@ export default function Documentos() {
     sortOrder,
     handleSort,
   } = useTableData({
-    data: documentos,
-    searchFields: ['nombre', 'tipo', 'expedienteNumero'],
+    data: documentosFiltrados,
+    searchFields: ['nombreArchivo', 'nombreOriginal', 'tipo', 'expedienteFolio'],
   });
 
   useEffect(() => {
@@ -65,6 +155,7 @@ export default function Documentos() {
       setIsLoading(true);
       const data = await api.getAll<Documento>('Documentos', {
         sortBy: 'created desc',
+        loadRelations: 'relacionExpedientes,relacionExpedientes.relacionUsuarios,relacionClientes,relacionUsers',
       });
       setDocumentos(data);
     } catch (error) {
@@ -78,15 +169,20 @@ export default function Documentos() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('¿Estás seguro de eliminar este documento?')) return;
+  const handleDelete = async () => {
+    if (!deletingDocumento) return;
 
     try {
-      await api.delete('Documentos', id);
-      toast({
-        title: 'Éxito',
-        description: 'Documento eliminado correctamente',
+      await api.update('Documentos', deletingDocumento.objectId, {
+        estadoDocumento: 'Eliminado',
       });
+
+      toast({
+        title: 'Documento eliminado',
+        description: 'El documento ha sido marcado como eliminado',
+      });
+
+      setDeletingDocumento(null);
       loadDocumentos();
     } catch (error) {
       toast({
@@ -115,83 +211,125 @@ export default function Documentos() {
 
   const getTipoBadge = (tipo: string) => {
     const colors: Record<string, string> = {
-      contrato: 'bg-blue-500/10 text-blue-500',
-      escritura: 'bg-purple-500/10 text-purple-500',
-      identificacion: 'bg-green-500/10 text-green-500',
-      comprobante: 'bg-yellow-500/10 text-yellow-500',
-      otro: 'bg-gray-500/10 text-gray-500',
+      Contrato: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
+      Escritura: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
+      Acuse: 'bg-green-500/10 text-green-500 border-green-500/20',
+      CLG: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
+      Identificación: 'bg-cyan-500/10 text-cyan-500 border-cyan-500/20',
+      Comprobante: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
+      Otro: 'bg-gray-500/10 text-gray-500 border-gray-500/20',
     };
-    return colors[tipo] || colors.otro;
+    return colors[tipo] || colors.Otro;
   };
 
-  const formatFileSize = (bytes?: number) => {
-    if (!bytes) return 'N/A';
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1048576) return (bytes / 1024).toFixed(2) + ' KB';
-    return (bytes / 1048576).toFixed(2) + ' MB';
+  const getEstadoBadge = (estado: string) => {
+    const colors: Record<string, string> = {
+      Activo: 'bg-green-500/10 text-green-500 border-green-500/20',
+      Reemplazado: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
+      Eliminado: 'bg-red-500/10 text-red-500 border-red-500/20',
+    };
+    return colors[estado] || colors.Activo;
+  };
+
+  const getFileIcon = (extension: string) => {
+    if (extension === 'pdf') return <FileText className="h-4 w-4" />;
+    if (['jpg', 'jpeg', 'png'].includes(extension)) return <FileImage className="h-4 w-4" />;
+    return <File className="h-4 w-4" />;
+  };
+
+  const formatFileSize = (kb: number) => {
+    if (kb < 1024) return `${kb} KB`;
+    return `${(kb / 1024).toFixed(2)} MB`;
+  };
+
+  const handleView = (documento: Documento) => {
+    setViewingDocumento(documento);
   };
 
   const handleDownload = (documento: Documento) => {
-    if (documento.archivoUrl) {
-      window.open(documento.archivoUrl, '_blank');
-    } else {
-      toast({
-        title: 'Error',
-        description: 'URL del archivo no disponible',
-        variant: 'destructive',
-      });
+    if (documento.url) {
+      window.open(documento.url, '_blank');
     }
   };
 
+  const clearFilters = () => {
+    setFilterTipo('');
+    setFilterCliente('');
+    setFilterExpediente('');
+    setFilterEstado('Activo');
+  };
+
+  const hasActiveFilters = filterTipo || filterCliente || filterExpediente || filterEstado !== 'Activo';
+
   const estadisticas = {
-    total: documentos.length,
-    contratos: documentos.filter(d => d.tipo === 'contrato').length,
-    escrituras: documentos.filter(d => d.tipo === 'escritura').length,
-    otros: documentos.filter(d => !['contrato', 'escritura'].includes(d.tipo)).length,
+    total: documentosFiltrados.length,
+    contratos: documentosFiltrados.filter(d => d.tipo === 'Contrato').length,
+    escrituras: documentosFiltrados.filter(d => d.tipo === 'Escritura').length,
+    clg: documentosFiltrados.filter(d => d.tipo === 'CLG').length,
+    otros: documentosFiltrados.filter(d => !['Contrato', 'Escritura', 'CLG'].includes(d.tipo)).length,
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex justify-between items-start">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight text-foreground">Documentos</h2>
-          <p className="text-muted-foreground mt-1">Gestiona la documentación del sistema</p>
+          <h1 className="text-3xl font-bold">Documentos</h1>
+          <p className="text-muted-foreground mt-1">
+            Gestión documental del proyecto inmobiliario
+          </p>
         </div>
         <Button onClick={handleNew}>
           <Plus className="mr-2 h-4 w-4" />
-          Subir Documento
+          Subir documento
         </Button>
       </div>
 
-      {/* Estadísticas */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-5">
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Documentos</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Total Documentos
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-foreground">{estadisticas.total}</div>
+            <div className="text-2xl font-bold">{estadisticas.total}</div>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Contratos</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Contratos
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-blue-500">{estadisticas.contratos}</div>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Escrituras</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Escrituras
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-purple-500">{estadisticas.escrituras}</div>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Otros</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              CLG
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-orange-500">{estadisticas.clg}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Otros
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-gray-500">{estadisticas.otros}</div>
@@ -199,12 +337,100 @@ export default function Documentos() {
         </Card>
       </div>
 
-      <Card className="shadow-card border-border/50">
+      <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5 text-primary" />
-            Lista de Documentos
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4" />
+              <CardTitle className="text-base">Filtros Avanzados</CardTitle>
+            </div>
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" onClick={clearFilters}>
+                <X className="h-4 w-4 mr-1" />
+                Limpiar filtros
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Tipo</label>
+              <Select value={filterTipo} onValueChange={setFilterTipo}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todos los tipos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Todos los tipos</SelectItem>
+                  {TIPOS_DOCUMENTO.map(tipo => (
+                    <SelectItem key={tipo} value={tipo}>
+                      {tipo}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Cliente</label>
+              <Select value={filterCliente} onValueChange={setFilterCliente}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todos los clientes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Todos los clientes</SelectItem>
+                  {clientesUnicos.map(cliente => (
+                    <SelectItem key={cliente} value={cliente}>
+                      {cliente}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Expediente</label>
+              <Select value={filterExpediente} onValueChange={setFilterExpediente}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todos los expedientes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Todos los expedientes</SelectItem>
+                  {expedientesUnicos.map(exp => (
+                    <SelectItem key={exp} value={exp}>
+                      {exp}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Estado</label>
+              <Select value={filterEstado} onValueChange={setFilterEstado}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todos los estados" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Todos los estados</SelectItem>
+                  {ESTADOS_DOCUMENTO.map(estado => (
+                    <SelectItem key={estado} value={estado}>
+                      {estado}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Documentos registrados</CardTitle>
+          <CardDescription>
+            {totalResults} documento{totalResults !== 1 ? 's' : ''} encontrado{totalResults !== 1 ? 's' : ''}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <TableControls
@@ -217,27 +443,30 @@ export default function Documentos() {
           />
 
           {isLoading ? (
-            <div className="flex justify-center items-center h-64">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <div className="flex justify-center items-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-          ) : totalResults === 0 ? (
-            <div className="text-center text-muted-foreground py-12">
-              {documentos.length === 0 ? 'No hay documentos registrados' : 'No se encontraron resultados'}
+          ) : pageData.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              {search || hasActiveFilters
+                ? 'No se encontraron documentos con los criterios de búsqueda'
+                : 'No hay documentos registrados'}
             </div>
           ) : (
-            <div className="rounded-md border border-border/50">
+            <>
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/50">
-                    <TableHeaderCell<Documento>
-                      field="nombre"
+                  <TableRow>
+                    <TableHead className="w-[40px]"></TableHead>
+                    <TableHeaderCell
+                      field="nombreOriginal"
                       label="Nombre"
                       sortable
                       currentSortField={sortField}
                       currentSortOrder={sortOrder}
                       onSort={handleSort}
                     />
-                    <TableHeaderCell<Documento>
+                    <TableHeaderCell
                       field="tipo"
                       label="Tipo"
                       sortable
@@ -245,101 +474,146 @@ export default function Documentos() {
                       currentSortOrder={sortOrder}
                       onSort={handleSort}
                     />
-                    <TableHeaderCell<Documento>
-                      field="expedienteNumero"
-                      label="Expediente"
-                      sortable
-                      currentSortField={sortField}
-                      currentSortOrder={sortOrder}
-                      onSort={handleSort}
-                    />
-                    <TableHeaderCell<Documento>
-                      field="tamanio"
+                    <TableHead>Cliente</TableHead>
+                    <TableHead>Expediente</TableHead>
+                    <TableHeaderCell
+                      field="tamanoKB"
                       label="Tamaño"
                       sortable
                       currentSortField={sortField}
                       currentSortOrder={sortOrder}
                       onSort={handleSort}
                     />
-                    <TableHeaderCell<Documento>
-                      field="fechaSubida"
+                    <TableHeaderCell
+                      field="created"
                       label="Fecha"
                       sortable
                       currentSortField={sortField}
                       currentSortOrder={sortOrder}
                       onSort={handleSort}
                     />
-                    <TableHeaderCell<Documento>
-                      label="Acciones"
-                      className="text-right"
-                    />
+                    <TableHead>Estado</TableHead>
+                    <TableHead>Versión</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {pageData.map((documento) => (
-                    <TableRow key={documento.objectId} className="hover:bg-muted/30 transition-colors">
+                  {pageData.map((doc) => (
+                    <TableRow key={doc.objectId}>
+                      <TableCell>
+                        {getFileIcon(doc.extension)}
+                      </TableCell>
                       <TableCell className="font-medium max-w-[200px] truncate">
-                        {documento.nombre}
+                        {doc.nombreOriginal}
                       </TableCell>
                       <TableCell>
-                        <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${getTipoBadge(documento.tipo)}`}>
-                          {documento.tipo}
-                        </span>
+                        <Badge variant="outline" className={getTipoBadge(doc.tipo)}>
+                          {doc.tipo}
+                        </Badge>
                       </TableCell>
-                      <TableCell>{documento.expedienteNumero || 'Sin asignar'}</TableCell>
-                      <TableCell>{formatFileSize(documento.tamanio)}</TableCell>
                       <TableCell>
-                        {new Date(documento.fechaSubida || documento.created).toLocaleDateString('es-MX')}
+                        {doc.relacionClientes?.nombre || 'N/A'}
+                      </TableCell>
+                      <TableCell>
+                        {doc.relacionExpedientes?.folioExpediente || doc.expedienteFolio || 'N/A'}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {formatFileSize(doc.tamanoKB)}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {new Date(doc.created).toLocaleDateString('es-MX')}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={getEstadoBadge(doc.estadoDocumento)}>
+                          {doc.estadoDocumento}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        v{doc.version}
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          {documento.archivoUrl && (
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleView(doc)}
+                            title="Ver documento"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDownload(doc)}
+                            title="Descargar"
+                          >
+                            <Download className="h-4 w-4" />
+                          </Button>
+                          {doc.estadoDocumento === 'Activo' && (
                             <>
                               <Button
                                 variant="ghost"
-                                size="icon"
-                                onClick={() => handleDownload(documento)}
-                                title="Ver/Descargar"
+                                size="sm"
+                                onClick={() => handleEdit(doc)}
+                                title="Editar"
                               >
-                                <Eye className="h-4 w-4" />
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setDeletingDocumento(doc)}
+                                title="Eliminar"
+                              >
+                                <Trash2 className="h-4 w-4" />
                               </Button>
                             </>
                           )}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleEdit(documento)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDelete(documento.objectId)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
-            </div>
+
+              {totalPages > 1 && (
+                <div className="flex justify-center gap-2 mt-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage(page - 1)}
+                    disabled={page === 1}
+                  >
+                    Anterior
+                  </Button>
+                  <span className="flex items-center px-4 text-sm">
+                    Página {page} de {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage(page + 1)}
+                    disabled={page === totalPages}
+                  >
+                    Siguiente
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>
-              {editingDocumento ? 'Editar Documento' : 'Subir Documento'}
+              {editingDocumento ? 'Editar documento' : 'Subir nuevo documento'}
             </DialogTitle>
             <DialogDescription>
-              {editingDocumento 
-                ? 'Modifica la información del documento' 
-                : 'Completa el formulario y selecciona el archivo a subir'}
+              {editingDocumento
+                ? 'Modifique los datos del documento o reemplace el archivo para crear una nueva versión'
+                : 'Complete los datos y seleccione el archivo a subir'}
             </DialogDescription>
           </DialogHeader>
           <DocumentoForm
@@ -347,6 +621,103 @@ export default function Documentos() {
             onSuccess={handleFormSuccess}
             onCancel={() => setIsDialogOpen(false)}
           />
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!deletingDocumento} onOpenChange={() => setDeletingDocumento(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar documento?</AlertDialogTitle>
+            <AlertDialogDescription>
+              El documento será marcado como "Eliminado" pero se mantendrá en el sistema para
+              auditoría. Esta acción no puede deshacerse.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete}>Eliminar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog open={!!viewingDocumento} onOpenChange={() => setViewingDocumento(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle>{viewingDocumento?.nombreOriginal}</DialogTitle>
+            <DialogDescription>
+              <div className="grid grid-cols-2 gap-4 mt-4 text-sm">
+                <div>
+                  <span className="font-medium">Tipo:</span> {viewingDocumento?.tipo}
+                </div>
+                <div>
+                  <span className="font-medium">Cliente:</span>{' '}
+                  {viewingDocumento?.relacionClientes?.nombre || 'N/A'}
+                </div>
+                <div>
+                  <span className="font-medium">Expediente:</span>{' '}
+                  {viewingDocumento?.relacionExpedientes?.folioExpediente || 'N/A'}
+                </div>
+                <div>
+                  <span className="font-medium">Tamaño:</span>{' '}
+                  {viewingDocumento ? formatFileSize(viewingDocumento.tamanoKB) : ''}
+                </div>
+                <div>
+                  <span className="font-medium">Versión:</span> v{viewingDocumento?.version}
+                </div>
+                <div>
+                  <span className="font-medium">Estado:</span> {viewingDocumento?.estadoDocumento}
+                </div>
+                <div>
+                  <span className="font-medium">Fecha de creación:</span>{' '}
+                  {viewingDocumento ? new Date(viewingDocumento.created).toLocaleString('es-MX') : ''}
+                </div>
+                <div>
+                  <span className="font-medium">Última modificación:</span>{' '}
+                  {viewingDocumento ? new Date(viewingDocumento.updated).toLocaleString('es-MX') : ''}
+                </div>
+                {viewingDocumento?.relacionUsers?.email && (
+                  <div className="col-span-2">
+                    <span className="font-medium">Cargado por:</span>{' '}
+                    {viewingDocumento.relacionUsers.email}
+                  </div>
+                )}
+                {viewingDocumento?.observaciones && (
+                  <div className="col-span-2">
+                    <span className="font-medium">Observaciones:</span>{' '}
+                    {viewingDocumento.observaciones}
+                  </div>
+                )}
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4">
+            {viewingDocumento?.extension === 'pdf' ? (
+              <iframe
+                src={viewingDocumento.url}
+                className="w-full h-[60vh] border rounded"
+                title="Vista previa PDF"
+              />
+            ) : ['jpg', 'jpeg', 'png'].includes(viewingDocumento?.extension || '') ? (
+              <img
+                src={viewingDocumento?.url}
+                alt={viewingDocumento?.nombreOriginal}
+                className="w-full h-auto max-h-[60vh] object-contain border rounded"
+              />
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <File className="h-12 w-12 mx-auto mb-2" />
+                <p>Vista previa no disponible para este tipo de archivo</p>
+                <Button
+                  variant="outline"
+                  className="mt-4"
+                  onClick={() => viewingDocumento && handleDownload(viewingDocumento)}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Descargar archivo
+                </Button>
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>
