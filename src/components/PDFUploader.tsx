@@ -120,47 +120,70 @@ export function PDFUploader({
           )}
         </div>
       ) : (
-        <div className="border border-border rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3 flex-1 min-w-0">
-              <div className="flex-shrink-0">
-                <File className="h-8 w-8 text-primary" />
+        <div className="space-y-3">
+          <div className="border border-border rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="flex-shrink-0">
+                  <File className="h-8 w-8 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">
+                    {currentFile?.name || 'archivo_clg.pdf'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {currentFile 
+                      ? `${(currentFile.size / 1024).toFixed(1)} KB`
+                      : 'Archivo cargado'
+                    }
+                  </p>
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground truncate">
-                  {currentFile?.name || 'archivo_clg.pdf'}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {currentFile 
-                    ? `${(currentFile.size / 1024).toFixed(1)} KB`
-                    : 'Archivo actual'
-                  }
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              {previewUrl && (
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {previewUrl && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open(previewUrl, '_blank')}
+                    disabled={disabled}
+                  >
+                    Ver PDF
+                  </Button>
+                )}
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
-                  onClick={() => window.open(previewUrl, '_blank')}
+                  onClick={handleRemove}
                   disabled={disabled}
                 >
-                  Ver PDF
+                  <X className="h-4 w-4" />
                 </Button>
-              )}
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={handleRemove}
-                disabled={disabled}
-              >
-                <X className="h-4 w-4" />
-              </Button>
+              </div>
             </div>
           </div>
+          
+          {/* Preview inline del PDF */}
+          {currentFile && (
+            <div className="border border-border rounded-lg overflow-hidden">
+              <iframe
+                src={URL.createObjectURL(currentFile)}
+                className="w-full h-[400px]"
+                title="Vista previa del PDF"
+              />
+            </div>
+          )}
+          
+          {previewUrl && !currentFile && (
+            <div className="border border-border rounded-lg overflow-hidden">
+              <iframe
+                src={previewUrl}
+                className="w-full h-[400px]"
+                title="Vista previa del PDF"
+              />
+            </div>
+          )}
         </div>
       )}
 
