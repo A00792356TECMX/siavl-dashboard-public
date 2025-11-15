@@ -35,6 +35,7 @@ type DocumentoFormData = z.infer<typeof documentoSchema>;
 interface Expediente {
   objectId: string;
   folioExpediente: string;
+  lote: string;
   relacionUsuarios?: {
     objectId: string;
     nombre: string;
@@ -55,9 +56,7 @@ interface Lote {
 
 interface Pago {
   monto: number;
-  relacionExpedientes: {
-    objectId: string;
-  };
+  folioExpediente: string;
 }
 
 interface DocumentoFormProps {
@@ -109,7 +108,7 @@ export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormP
       
       const [expedientesData, pagosData, lotesData, clientesData] = await Promise.all([
         api.getAll<Expediente>('Expedientes', {
-          loadRelations: 'relacionUsuarios',
+          loadRelations: 'relacionUsuarios,relacionLotes',
         }).catch(() => []),
         api.getAll<Pago>('Pagos').catch(() => []),
         api.getAll<Lote>('Lotes').catch(() => []),
@@ -117,13 +116,16 @@ export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormP
       ]);
 
       const expedientesConAdeudo = expedientesData.map(exp => {
+        // Calcular pagos realizados para este expediente usando folioExpediente
         const pagosFiltrados = pagosData.filter(
-          p => p.relacionExpedientes?.objectId === exp.objectId
+          p => p.folioExpediente === exp.folioExpediente
         );
         const montoPagado = pagosFiltrados.reduce((sum, p) => sum + (p.monto || 0), 0);
-        const loteAsociado = lotesData.find(l => l.numeroLote === exp.folioExpediente?.split('-')[1]);
+        
+        // Buscar el lote asociado usando el campo lote del expediente
+        const loteAsociado = lotesData.find(l => l.numeroLote === exp.lote);
         const precioLote = loteAsociado?.precio || 0;
-        const adeudo = precioLote - montoPagado;
+        const adeudo = Math.max(0, precioLote - montoPagado);
 
         return {
           ...exp,
