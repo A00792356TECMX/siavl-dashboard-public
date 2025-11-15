@@ -44,7 +44,8 @@ type PagoFormData = z.infer<typeof pagoSchema>;
 interface Expediente {
   objectId: string;
   folioExpediente: string;
-  montoPorPagar: number;
+  cliente: string;
+  lote: string;
   relacionUsuarios?: {
     nombre: string;
   };
@@ -61,6 +62,7 @@ export function PagoForm({ pago, onSuccess, onCancel }: PagoFormProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [expedientes, setExpedientes] = useState<Expediente[]>([]);
   const [loadingData, setLoadingData] = useState(true);
+  const [adeudoMap, setAdeudoMap] = useState<Map<string, number>>(new Map());
 
   const form = useForm<PagoFormData>({
     resolver: zodResolver(pagoSchema),
@@ -81,17 +83,46 @@ export function PagoForm({ pago, onSuccess, onCancel }: PagoFormProps) {
     try {
       setLoadingData(true);
 
-      // Load expedientes with relations
-      const expedientesData = await api.getAll<Expediente>("Expedientes", {
-        loadRelations: "relacionUsuarios"
+      // Load all necessary data in parallel
+      const [expedientesData, pagosData, lotesData] = await Promise.all([
+        api.getAll<Expediente>("Expedientes", { loadRelations: "relacionUsuarios" }),
+        api.getAll<any>("Pagos"),
+        api.getAll<any>("Lotes")
+      ]);
+
+      // Calculate total paid per expediente
+      const pagosPorExpediente = new Map<string, number>();
+      pagosData.forEach((p: any) => {
+        // Exclude current pago if editing
+        if (pago?.objectId && p.objectId === pago.objectId) return;
+        
+        const current = pagosPorExpediente.get(p.folioExpediente) || 0;
+        pagosPorExpediente.set(p.folioExpediente, current + (p.monto || 0));
       });
 
-      // Filter expedientes with pending debt (montoPorPagar > 0)
+      // Map lote prices by numeroLote
+      const preciosPorLote = new Map<string, number>();
+      lotesData.forEach((lote: any) => {
+        preciosPorLote.set(lote.numeroLote, lote.precio || 0);
+      });
+
+      // Calculate adeudo for each expediente
+      const adeudoPorExpediente = new Map<string, number>();
+      expedientesData.forEach((exp: Expediente) => {
+        const precioLote = preciosPorLote.get(exp.lote) || 0;
+        const montoPagado = pagosPorExpediente.get(exp.folioExpediente) || 0;
+        const adeudo = precioLote - montoPagado;
+        adeudoPorExpediente.set(exp.objectId, adeudo);
+      });
+
+      // Filter expedientes with pending debt OR the current one being edited
       const expedientesConAdeudo = expedientesData.filter((exp: Expediente) => {
-        return exp.montoPorPagar > 0 || (pago?.relacionExpedientes?.objectId === exp.objectId);
+        const adeudo = adeudoPorExpediente.get(exp.objectId) || 0;
+        return adeudo > 0 || (pago?.relacionExpedientes?.objectId === exp.objectId);
       });
 
       setExpedientes(expedientesConAdeudo);
+      setAdeudoMap(adeudoPorExpediente);
     } catch {
       toast({
         title: "Error",
@@ -143,12 +174,15 @@ export function PagoForm({ pago, onSuccess, onCancel }: PagoFormProps) {
         return;
       }
 
+      // Get the adeudo for this expediente
+      const adeudo = adeudoMap.get(expediente.objectId) || 0;
+      
       // Validate amount against debt
       const nuevoMonto = parseFloat(data.monto);
-      if (nuevoMonto > expediente.montoPorPagar) {
+      if (nuevoMonto > adeudo) {
         toast({
           title: "Error",
-          description: `El monto excede el adeudo. Adeudo pendiente: $${expediente.montoPorPagar.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          description: `El monto excede el adeudo. Adeudo pendiente: $${adeudo.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
           variant: "destructive",
         });
         setIsLoading(false);
@@ -229,8 +263,8 @@ export function PagoForm({ pago, onSuccess, onCancel }: PagoFormProps) {
                       </SelectItem>
                     ) : (
                       expedientes.map((exp: Expediente) => {
-                        const clienteNombre = exp.relacionUsuarios?.nombre || "Sin cliente";
-                        const adeudo = exp.montoPorPagar;
+                        const clienteNombre = exp.relacionUsuarios?.nombre || exp.cliente || "Sin cliente";
+                        const adeudo = adeudoMap.get(exp.objectId) || 0;
 
                         return (
                           <SelectItem key={exp.objectId} value={exp.objectId}>
