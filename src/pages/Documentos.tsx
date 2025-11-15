@@ -97,9 +97,9 @@ export default function Documentos() {
   const [deletingDocumento, setDeletingDocumento] = useState<Documento | null>(null);
   const [viewingDocumento, setViewingDocumento] = useState<Documento | null>(null);
 
-  const [filterTipo, setFilterTipo] = useState<string>('');
-  const [filterCliente, setFilterCliente] = useState<string>('');
-  const [filterExpediente, setFilterExpediente] = useState<string>('');
+  const [filterTipo, setFilterTipo] = useState<string>('all');
+  const [filterCliente, setFilterCliente] = useState<string>('all');
+  const [filterExpediente, setFilterExpediente] = useState<string>('all');
   const [filterEstado, setFilterEstado] = useState<string>('Activo');
 
   const { toast } = useToast();
@@ -121,10 +121,10 @@ export default function Documentos() {
   ).sort();
 
   const documentosFiltrados = documentos.filter(doc => {
-    if (filterTipo && doc.tipo !== filterTipo) return false;
-    if (filterCliente && doc.relacionClientes?.nombre !== filterCliente) return false;
-    if (filterExpediente && doc.relacionExpedientes?.folioExpediente !== filterExpediente) return false;
-    if (filterEstado && doc.estadoDocumento !== filterEstado) return false;
+    if (filterTipo && filterTipo !== 'all' && doc.tipo !== filterTipo) return false;
+    if (filterCliente && filterCliente !== 'all' && doc.relacionClientes?.nombre !== filterCliente) return false;
+    if (filterExpediente && filterExpediente !== 'all' && doc.relacionExpedientes?.folioExpediente !== filterExpediente) return false;
+    if (filterEstado && filterEstado !== 'all' && doc.estadoDocumento !== filterEstado) return false;
     return true;
   });
 
@@ -253,13 +253,13 @@ export default function Documentos() {
   };
 
   const clearFilters = () => {
-    setFilterTipo('');
-    setFilterCliente('');
-    setFilterExpediente('');
+    setFilterTipo('all');
+    setFilterCliente('all');
+    setFilterExpediente('all');
     setFilterEstado('Activo');
   };
 
-  const hasActiveFilters = filterTipo || filterCliente || filterExpediente || filterEstado !== 'Activo';
+  const hasActiveFilters = filterTipo !== 'all' || filterCliente !== 'all' || filterExpediente !== 'all' || filterEstado !== 'Activo';
 
   const estadisticas = {
     total: documentosFiltrados.length,
@@ -361,7 +361,7 @@ export default function Documentos() {
                   <SelectValue placeholder="Todos los tipos" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos los tipos</SelectItem>
+                  <SelectItem value="all">Todos los tipos</SelectItem>
                   {TIPOS_DOCUMENTO.map(tipo => (
                     <SelectItem key={tipo} value={tipo}>
                       {tipo}
@@ -378,7 +378,7 @@ export default function Documentos() {
                   <SelectValue placeholder="Todos los clientes" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos los clientes</SelectItem>
+                  <SelectItem value="all">Todos los clientes</SelectItem>
                   {clientesUnicos.map(cliente => (
                     <SelectItem key={cliente} value={cliente}>
                       {cliente}
@@ -395,7 +395,7 @@ export default function Documentos() {
                   <SelectValue placeholder="Todos los expedientes" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos los expedientes</SelectItem>
+                  <SelectItem value="all">Todos los expedientes</SelectItem>
                   {expedientesUnicos.map(exp => (
                     <SelectItem key={exp} value={exp}>
                       {exp}
@@ -412,7 +412,7 @@ export default function Documentos() {
                   <SelectValue placeholder="Todos los estados" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos los estados</SelectItem>
+                  <SelectItem value="all">Todos los estados</SelectItem>
                   {ESTADOS_DOCUMENTO.map(estado => (
                     <SelectItem key={estado} value={estado}>
                       {estado}
