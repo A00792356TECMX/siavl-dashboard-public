@@ -282,14 +282,25 @@ export default function Notificaciones() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {notifications.length === 0 ? (
+          <TableControls
+            search={search}
+            onSearchChange={setSearch}
+            pageSize={pageSize}
+            onPageSizeChange={setPageSize}
+            totalResults={totalResults}
+            currentPageResults={pageData.length}
+          />
+
+          {totalResults === 0 ? (
             <div className="text-center py-12">
               <CheckCircle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No hay notificaciones pendientes</p>
+              <p className="text-muted-foreground">
+                {notifications.length === 0 ? 'No hay notificaciones pendientes' : 'No se encontraron resultados'}
+              </p>
             </div>
           ) : (
             <div className="space-y-4">
-              {notifications.map((notification) => (
+              {pageData.map((notification) => (
                 <div
                   key={notification.id}
                   className="flex items-start gap-4 p-4 border rounded-lg hover:bg-accent/50 transition-colors"

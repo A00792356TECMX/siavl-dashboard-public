@@ -199,30 +199,76 @@ export default function Logs() {
           </CardTitle>
         </CardHeader>
         <CardContent>
+          <TableControls
+            search={search}
+            onSearchChange={setSearch}
+            pageSize={pageSize}
+            onPageSizeChange={setPageSize}
+            totalResults={totalResults}
+            currentPageResults={pageData.length}
+          />
+
           {isLoading ? (
             <div className="flex justify-center items-center h-64">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
-          ) : logsFilterados.length === 0 ? (
+          ) : totalResults === 0 ? (
             <div className="text-center text-muted-foreground py-12">
-              No hay logs registrados
+              {logs.length === 0 ? 'No hay logs registrados' : 'No se encontraron resultados'}
             </div>
           ) : (
             <div className="rounded-md border border-border/50">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/50">
-                    <TableHead>Fecha y Hora</TableHead>
-                    <TableHead>Usuario</TableHead>
-                    <TableHead>Acción</TableHead>
-                    <TableHead>Tabla</TableHead>
-                    <TableHead>ID Registro</TableHead>
-                    <TableHead>Detalles</TableHead>
+                    <TableHeaderCell<Log>
+                      field="fecha"
+                      label="Fecha y Hora"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Log>
+                      field="usuario"
+                      label="Usuario"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Log>
+                      field="accion"
+                      label="Acción"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Log>
+                      field="tabla"
+                      label="Tabla"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Log>
+                      field="registroId"
+                      label="ID Registro"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Log>
+                      label="Detalles"
+                    />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {logsFilterados.map((log) => (
-                    <TableRow key={log.objectId} className="hover:bg-muted/30">
+                  {pageData.map((log) => (
+                    <TableRow key={log.objectId} className="hover:bg-muted/30 transition-colors">
                       <TableCell className="font-medium">
                         {new Date(log.fecha || log.created).toLocaleString('es-MX', {
                           year: 'numeric',
