@@ -22,9 +22,11 @@ interface Expediente {
   folioExpediente: string;
   cliente: string;
   lote: string;
+  relacionUsuarios?: string;
+  relacionLotes?: string;
   observaciones?: string;
   activo: boolean;
-  created: string;  // Fecha apertura
+  created: string;
   updated: string;
 }
 
@@ -35,6 +37,8 @@ export default function Expedientes() {
   const [editingExpediente, setEditingExpediente] = useState<Expediente | null>(null);
   const [pagosData, setPagosData] = useState<Map<string, number>>(new Map());
   const [lotesData, setLotesData] = useState<Map<string, number>>(new Map());
+  const [clientesMap, setClientesMap] = useState<Map<string, any>>(new Map());
+  const [lotesMap, setLotesMap] = useState<Map<string, any>>(new Map());
   const { toast } = useToast();
 
   const {
@@ -62,10 +66,11 @@ export default function Expedientes() {
   const loadExpedientes = async () => {
     try {
       setIsLoading(true);
-      const [expedientesData, pagosData, lotesData] = await Promise.all([
+      const [expedientesData, pagosData, lotesData, clientesData] = await Promise.all([
         api.getAll<Expediente>('Expedientes', { sortBy: 'created desc' }),
         api.getAll<any>('Pagos'),
-        api.getAll<any>('Lotes')
+        api.getAll<any>('Lotes'),
+        api.getAll<any>('Usuarios')
       ]);
 
       // Calculate total paid amount per expediente (grouped by folioExpediente)
@@ -81,9 +86,23 @@ export default function Expedientes() {
         preciosPorLote.set(lote.numeroLote, lote.precio || 0);
       });
 
+      // Map clientes by objectId
+      const clientesById = new Map<string, any>();
+      clientesData.forEach((cliente: any) => {
+        clientesById.set(cliente.objectId, cliente);
+      });
+
+      // Map lotes by objectId
+      const lotesById = new Map<string, any>();
+      lotesData.forEach((lote: any) => {
+        lotesById.set(lote.objectId, lote);
+      });
+
       setExpedientes(expedientesData);
       setPagosData(pagosPorExpediente);
       setLotesData(preciosPorLote);
+      setClientesMap(clientesById);
+      setLotesMap(lotesById);
     } catch (error) {
       toast({
         title: 'Error',
@@ -244,12 +263,27 @@ export default function Expedientes() {
                   {pageData.map((expediente) => {
                     const montoPagado = getMontoPagado(expediente.folioExpediente);
                     const montoPorPagar = getMontoPorPagar(expediente.folioExpediente, expediente.lote);
+                    
+                    // Get related cliente and lote data
+                    const cliente = expediente.relacionUsuarios 
+                      ? clientesMap.get(expediente.relacionUsuarios) 
+                      : null;
+                    const lote = expediente.relacionLotes 
+                      ? lotesMap.get(expediente.relacionLotes) 
+                      : null;
 
                     return (
                       <TableRow key={expediente.objectId} className="hover:bg-muted/30 transition-colors">
                         <TableCell className="font-medium">{expediente.folioExpediente}</TableCell>
-                        <TableCell>{expediente.cliente || 'N/A'}</TableCell>
-                        <TableCell>{expediente.lote || 'Sin asignar'}</TableCell>
+                        <TableCell>
+                          {cliente ? cliente.nombre : (expediente.cliente || 'N/A')}
+                        </TableCell>
+                        <TableCell>
+                          {lote 
+                            ? `${lote.numeroLote} - Manzana ${lote.manzana}` 
+                            : (expediente.lote || 'Sin asignar')
+                          }
+                        </TableCell>
                         <TableCell>{expediente.activo ? '✅ Activo' : '❌ Inactivo'}</TableCell>
                         <TableCell className="text-right font-medium text-green-600">
                           ${montoPagado.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

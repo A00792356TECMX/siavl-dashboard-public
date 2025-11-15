@@ -14,20 +14,35 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 
-// ✅ New schema
 const expedienteSchema = z.object({
   folioExpediente: z.string().optional(),
   cliente: z.string().min(1, 'Cliente requerido'),
   lote: z.string().min(1, 'Lote requerido'),
+  relacionUsuarios: z.string().optional(),
+  relacionLotes: z.string().optional(),
   observaciones: z.string().max(1000).optional(),
   activo: z.boolean().default(true),
 });
 
 type ExpedienteFormData = z.infer<typeof expedienteSchema>;
+
+interface Cliente {
+  objectId: string;
+  nombre: string;
+  email: string;
+}
+
+interface Lote {
+  objectId: string;
+  numeroLote: string;
+  manzana: string;
+  activo: string;
+}
 
 interface ExpedienteFormProps {
   expediente?: any;
@@ -37,7 +52,10 @@ interface ExpedienteFormProps {
 
 export function ExpedienteForm({ expediente, onSuccess, onCancel }: ExpedienteFormProps) {
   const [isLoading, setIsLoading] = useState(false);
-  const [availableLotes, setAvailableLotes] = useState<Array<{ numeroLote: string; manzana: string }>>([]);
+  const [loadingClientes, setLoadingClientes] = useState(false);
+  const [loadingLotes, setLoadingLotes] = useState(false);
+  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [availableLotes, setAvailableLotes] = useState<Lote[]>([]);
   const { toast } = useToast();
 
   const form = useForm<ExpedienteFormData>({
@@ -46,36 +64,64 @@ export function ExpedienteForm({ expediente, onSuccess, onCancel }: ExpedienteFo
       folioExpediente: expediente?.folioExpediente || '',
       cliente: expediente?.cliente || '',
       lote: expediente?.lote || '',
+      relacionUsuarios: expediente?.relacionUsuarios || '',
+      relacionLotes: expediente?.relacionLotes || '',
       observaciones: expediente?.observaciones || '',
       activo: expediente?.activo ?? true,
     },
   });
 
-  // Load available lotes (not assigned to any expediente)
   useEffect(() => {
+    loadClientes();
     loadAvailableLotes();
   }, []);
 
+  const loadClientes = async () => {
+    try {
+      setLoadingClientes(true);
+      const clientesData = await api.getAll<Cliente>('Usuarios');
+      setClientes(clientesData);
+    } catch (error) {
+      console.error('Error loading clientes:', error);
+      toast({
+        title: 'Error',
+        description: 'Error al cargar los clientes',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingClientes(false);
+    }
+  };
+
   const loadAvailableLotes = async () => {
     try {
-      // Get all lotes and expedientes
+      setLoadingLotes(true);
       const [allLotes, allExpedientes] = await Promise.all([
-        api.getAll('Lotes'),
+        api.getAll<Lote>('Lotes'),
         api.getAll('Expedientes')
       ]);
 
-      // Get lotes already assigned (excluding the current expediente if editing)
-      const assignedLotes = allExpedientes
-        .filter((exp: any) => exp.objectId !== expediente?.objectId)
-        .map((exp: any) => exp.lote);
+      // Get lotes already assigned via relacionLotes (excluding current expediente if editing)
+      const assignedLoteIds = allExpedientes
+        .filter((exp: any) => 
+          exp.relacionLotes && 
+          exp.objectId !== expediente?.objectId
+        )
+        .map((exp: any) => exp.relacionLotes);
 
-      // Filter available lotes
-      const available = allLotes
-        .filter((lote: any) => !assignedLotes.includes(lote.numeroLote))
-        .map((lote: any) => ({
-          numeroLote: lote.numeroLote,
-          manzana: lote.manzana || 'Sin manzana'
-        }));
+      // Filter: only active lots and not assigned
+      const available = allLotes.filter((lote: Lote) => 
+        lote.activo === 'Disponibles' && 
+        !assignedLoteIds.includes(lote.objectId)
+      );
+
+      // If editing, include current lot even if occupied
+      if (expediente?.relacionLotes) {
+        const currentLote = allLotes.find((l: Lote) => l.objectId === expediente.relacionLotes);
+        if (currentLote && !available.find((l: Lote) => l.objectId === currentLote.objectId)) {
+          available.unshift(currentLote);
+        }
+      }
 
       setAvailableLotes(available);
     } catch (error) {
@@ -85,10 +131,11 @@ export function ExpedienteForm({ expediente, onSuccess, onCancel }: ExpedienteFo
         description: 'Error al cargar los lotes disponibles',
         variant: 'destructive',
       });
+    } finally {
+      setLoadingLotes(false);
     }
   };
 
-  // ✅ Generate sequential folio when creating new expediente
   const generateFolio = async () => {
     const data = await api.getAll('Expedientes');
     const next = data.length + 1;
@@ -99,26 +146,31 @@ export function ExpedienteForm({ expediente, onSuccess, onCancel }: ExpedienteFo
     try {
       setIsLoading(true);
 
-      // Validate that lote is not assigned to another expediente
-      const allExpedientes = await api.getAll('Expedientes');
-      const loteAlreadyAssigned = allExpedientes.find(
-        (exp: any) =>
-          exp.lote === data.lote &&
-          exp.objectId !== expediente?.objectId
-      );
+      // Validate that relacionLotes is not assigned to another expediente
+      if (data.relacionLotes) {
+        const allExpedientes = await api.getAll('Expedientes');
+        const loteAlreadyAssigned = allExpedientes.find(
+          (exp: any) =>
+            exp.relacionLotes === data.relacionLotes &&
+            exp.objectId !== expediente?.objectId
+        );
 
-      if (loteAlreadyAssigned) {
-        toast({
-          title: 'Error',
-          description: 'Este lote ya está asignado a otro expediente',
-          variant: 'destructive',
-        });
-        setIsLoading(false);
-        return;
+        if (loteAlreadyAssigned) {
+          toast({
+            title: 'Error',
+            description: 'Este lote ya está asignado a otro expediente',
+            variant: 'destructive',
+          });
+          setIsLoading(false);
+          return;
+        }
       }
 
-      let payload = {
-        ...data,
+      let payload: any = {
+        cliente: data.cliente,
+        lote: data.lote,
+        observaciones: data.observaciones,
+        activo: data.activo,
         folioExpediente: expediente?.folioExpediente || (await generateFolio()),
       };
 
@@ -163,32 +215,63 @@ export function ExpedienteForm({ expediente, onSuccess, onCancel }: ExpedienteFo
             )}
           />
 
-          {/* Cliente */}
+          {/* Cliente Select */}
           <FormField
             control={form.control}
-            name="cliente"
+            name="relacionUsuarios"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Cliente</FormLabel>
-                <FormControl>
-                  <Input placeholder="Nombre del cliente" {...field} />
-                </FormControl>
+                <FormLabel>Selecciona un Cliente</FormLabel>
+                <Select 
+                  onValueChange={(value) => {
+                    field.onChange(value);
+                    const selectedCliente = clientes.find(c => c.objectId === value);
+                    if (selectedCliente) {
+                      form.setValue('cliente', selectedCliente.nombre);
+                    }
+                  }} 
+                  value={field.value}
+                  disabled={loadingClientes}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder={loadingClientes ? "Cargando clientes..." : "Seleccionar cliente"} />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {clientes.map((cliente) => (
+                      <SelectItem key={cliente.objectId} value={cliente.objectId}>
+                        {cliente.nombre} - {cliente.email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <FormMessage />
               </FormItem>
             )}
           />
 
-          {/* Lote */}
+          {/* Lote Select */}
           <FormField
             control={form.control}
-            name="lote"
+            name="relacionLotes"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Lote</FormLabel>
-                <Select onValueChange={field.onChange} value={field.value}>
+                <FormLabel>Selecciona un Lote Disponible</FormLabel>
+                <Select 
+                  onValueChange={(value) => {
+                    field.onChange(value);
+                    const selectedLote = availableLotes.find(l => l.objectId === value);
+                    if (selectedLote) {
+                      form.setValue('lote', `${selectedLote.numeroLote} - Manzana ${selectedLote.manzana}`);
+                    }
+                  }} 
+                  value={field.value}
+                  disabled={loadingLotes}
+                >
                   <FormControl>
                     <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar lote disponible" />
+                      <SelectValue placeholder={loadingLotes ? "Cargando lotes..." : "Seleccionar lote disponible"} />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
@@ -198,7 +281,7 @@ export function ExpedienteForm({ expediente, onSuccess, onCancel }: ExpedienteFo
                       </SelectItem>
                     ) : (
                       availableLotes.map((lote) => (
-                        <SelectItem key={lote.numeroLote} value={lote.numeroLote}>
+                        <SelectItem key={lote.objectId} value={lote.objectId}>
                           {lote.numeroLote} - Manzana {lote.manzana}
                         </SelectItem>
                       ))
