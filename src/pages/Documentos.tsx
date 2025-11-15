@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -15,24 +15,22 @@ import {
   Pencil,
   Trash2,
   Loader2,
-  FileText,
-  Download,
   Eye,
-  File,
-  FileImage,
+  FileText,
   Filter,
   X,
+  AlertCircle,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { DocumentoForm } from '@/components/DocumentoForm';
+import { DocumentoDetailModal } from '@/components/DocumentoDetailModal';
 import { TableControls } from '@/components/TableControls';
 import { TableHeaderCell } from '@/components/TableHeader';
 import { useTableData } from '@/hooks/useTableData';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -46,11 +44,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { getEstadoColor, formatearTamano } from '@/utils/documentoHelpers';
 
 interface Documento {
   objectId: string;
   nombreArchivo: string;
-  nombreOriginal: string;
+  nombreOriginal?: string;
   tipo: string;
   extension: string;
   tamanoKB: number;
@@ -70,9 +69,6 @@ interface Documento {
     objectId: string;
     nombre: string;
   };
-  relacionUsers?: {
-    email: string;
-  };
   created: string;
   updated: string;
 }
@@ -86,8 +82,6 @@ const TIPOS_DOCUMENTO = [
   'Comprobante',
   'Otro',
 ];
-
-const ESTADOS_DOCUMENTO = ['Activo', 'Reemplazado', 'Eliminado'];
 
 export default function Documentos() {
   const [documentos, setDocumentos] = useState<Documento[]>([]);
@@ -107,7 +101,7 @@ export default function Documentos() {
   const clientesUnicos = Array.from(
     new Set(
       documentos
-        .map(d => d.relacionClientes?.nombre)
+        .map(d => d.relacionExpedientes?.relacionUsuarios?.nombre)
         .filter(Boolean)
     )
   ).sort();
@@ -122,7 +116,7 @@ export default function Documentos() {
 
   const documentosFiltrados = documentos.filter(doc => {
     if (filterTipo && filterTipo !== 'all' && doc.tipo !== filterTipo) return false;
-    if (filterCliente && filterCliente !== 'all' && doc.relacionClientes?.nombre !== filterCliente) return false;
+    if (filterCliente && filterCliente !== 'all' && doc.relacionExpedientes?.relacionUsuarios?.nombre !== filterCliente) return false;
     if (filterExpediente && filterExpediente !== 'all' && doc.relacionExpedientes?.folioExpediente !== filterExpediente) return false;
     if (filterEstado && filterEstado !== 'all' && doc.estadoDocumento !== filterEstado) return false;
     return true;
@@ -133,16 +127,16 @@ export default function Documentos() {
     totalResults,
     page,
     pageSize,
-    totalPages,
-    setPage,
-    setPageSize,
-    search,
-    setSearch,
     sortField,
     sortOrder,
+    search: searchTerm,
+    setSearch: setSearchTerm,
+    setPageSize,
+    setPage,
     handleSort,
-  } = useTableData({
+  } = useTableData<Documento>({
     data: documentosFiltrados,
+    initialPageSize: 10,
     searchFields: ['nombreArchivo', 'nombreOriginal', 'tipo', 'expedienteFolio'],
   });
 
@@ -154,42 +148,18 @@ export default function Documentos() {
     try {
       setIsLoading(true);
       const data = await api.getAll<Documento>('Documentos', {
-        sortBy: 'created desc',
-        loadRelations: 'relacionExpedientes,relacionExpedientes.relacionUsuarios,relacionClientes,relacionUsers',
+        loadRelations: 'relacionExpedientes.relacionUsuarios,relacionClientes',
       });
       setDocumentos(data);
     } catch (error) {
+      console.error('Error al cargar documentos:', error);
       toast({
         title: 'Error',
-        description: 'Error al cargar los documentos',
+        description: 'No se pudieron cargar los documentos',
         variant: 'destructive',
       });
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!deletingDocumento) return;
-
-    try {
-      await api.update('Documentos', deletingDocumento.objectId, {
-        estadoDocumento: 'Eliminado',
-      });
-
-      toast({
-        title: 'Documento eliminado',
-        description: 'El documento ha sido marcado como eliminado',
-      });
-
-      setDeletingDocumento(null);
-      loadDocumentos();
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Error al eliminar el documento',
-        variant: 'destructive',
-      });
     }
   };
 
@@ -198,58 +168,39 @@ export default function Documentos() {
     setIsDialogOpen(true);
   };
 
-  const handleNew = () => {
-    setEditingDocumento(null);
-    setIsDialogOpen(true);
+  const handleDelete = async () => {
+    if (!deletingDocumento) return;
+
+    try {
+      await api.update('Documentos', deletingDocumento.objectId, {
+        estadoDocumento: 'Inactivo',
+      });
+
+      toast({
+        title: 'Éxito',
+        description: 'Documento eliminado correctamente',
+      });
+
+      setDeletingDocumento(null);
+      loadDocumentos();
+    } catch (error) {
+      console.error('Error al eliminar documento:', error);
+      toast({
+        title: 'Error',
+        description: 'No se pudo eliminar el documento',
+        variant: 'destructive',
+      });
+    }
   };
 
-  const handleFormSuccess = () => {
+  const handleDialogClose = () => {
     setIsDialogOpen(false);
     setEditingDocumento(null);
+  };
+
+  const handleSuccess = () => {
+    handleDialogClose();
     loadDocumentos();
-  };
-
-  const getTipoBadge = (tipo: string) => {
-    const colors: Record<string, string> = {
-      Contrato: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-      Escritura: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
-      Acuse: 'bg-green-500/10 text-green-500 border-green-500/20',
-      CLG: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
-      Identificación: 'bg-cyan-500/10 text-cyan-500 border-cyan-500/20',
-      Comprobante: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-      Otro: 'bg-gray-500/10 text-gray-500 border-gray-500/20',
-    };
-    return colors[tipo] || colors.Otro;
-  };
-
-  const getEstadoBadge = (estado: string) => {
-    const colors: Record<string, string> = {
-      Activo: 'bg-green-500/10 text-green-500 border-green-500/20',
-      Reemplazado: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
-      Eliminado: 'bg-red-500/10 text-red-500 border-red-500/20',
-    };
-    return colors[estado] || colors.Activo;
-  };
-
-  const getFileIcon = (extension: string) => {
-    if (extension === 'pdf') return <FileText className="h-4 w-4" />;
-    if (['jpg', 'jpeg', 'png'].includes(extension)) return <FileImage className="h-4 w-4" />;
-    return <File className="h-4 w-4" />;
-  };
-
-  const formatFileSize = (kb: number) => {
-    if (kb < 1024) return `${kb} KB`;
-    return `${(kb / 1024).toFixed(2)} MB`;
-  };
-
-  const handleView = (documento: Documento) => {
-    setViewingDocumento(documento);
-  };
-
-  const handleDownload = (documento: Documento) => {
-    if (documento.url) {
-      window.open(documento.url, '_blank');
-    }
   };
 
   const clearFilters = () => {
@@ -259,93 +210,114 @@ export default function Documentos() {
     setFilterEstado('Activo');
   };
 
-  const hasActiveFilters = filterTipo !== 'all' || filterCliente !== 'all' || filterExpediente !== 'all' || filterEstado !== 'Activo';
+  const hasActiveFilters =
+    filterTipo !== 'all' ||
+    filterCliente !== 'all' ||
+    filterExpediente !== 'all' ||
+    filterEstado !== 'Activo';
 
-  const estadisticas = {
-    total: documentosFiltrados.length,
-    contratos: documentosFiltrados.filter(d => d.tipo === 'Contrato').length,
-    escrituras: documentosFiltrados.filter(d => d.tipo === 'Escritura').length,
-    clg: documentosFiltrados.filter(d => d.tipo === 'CLG').length,
-    otros: documentosFiltrados.filter(d => !['Contrato', 'Escritura', 'CLG'].includes(d.tipo)).length,
+  // Calcular estadísticas
+  const stats = {
+    total: documentos.length,
+    activos: documentos.filter(d => d.estadoDocumento === 'Activo').length,
+    inactivos: documentos.filter(d => d.estadoDocumento === 'Inactivo').length,
+    filtrados: documentosFiltrados.length,
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-4rem)]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-start">
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Documentos</h1>
-          <p className="text-muted-foreground mt-1">
-            Gestión documental del proyecto inmobiliario
+          <h1 className="text-3xl font-bold tracking-tight">Documentos</h1>
+          <p className="text-muted-foreground">
+            Gestiona todos los documentos del sistema
           </p>
         </div>
-        <Button onClick={handleNew}>
-          <Plus className="mr-2 h-4 w-4" />
-          Subir documento
+        <Button onClick={() => setIsDialogOpen(true)}>
+          <Plus className="h-4 w-4 mr-2" />
+          Nuevo Documento
         </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-5">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total Documentos
-            </CardTitle>
+      {/* KPIs */}
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card className="bg-card border-border/50">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Documentos</CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{estadisticas.total}</div>
+            <div className="text-3xl font-bold">{stats.total}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              En el sistema
+            </p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Contratos
-            </CardTitle>
+
+        <Card className="bg-card border-border/50">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Activos</CardTitle>
+            <FileText className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-blue-500">{estadisticas.contratos}</div>
+            <div className="text-3xl font-bold text-green-600">{stats.activos}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Documentos disponibles
+            </p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Escrituras
-            </CardTitle>
+
+        <Card className="bg-card border-border/50">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Inactivos</CardTitle>
+            <FileText className="h-4 w-4 text-gray-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-purple-500">{estadisticas.escrituras}</div>
+            <div className="text-3xl font-bold text-gray-600">{stats.inactivos}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Documentos inactivos
+            </p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              CLG
-            </CardTitle>
+
+        <Card className="bg-card border-border/50">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Filtrados</CardTitle>
+            <Filter className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-orange-500">{estadisticas.clg}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Otros
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-gray-500">{estadisticas.otros}</div>
+            <div className="text-3xl font-bold text-primary">{stats.filtrados}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Resultados actuales
+            </p>
           </CardContent>
         </Card>
       </div>
 
+      {/* Filtros */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+            <CardTitle className="text-base flex items-center gap-2">
               <Filter className="h-4 w-4" />
-              <CardTitle className="text-base">Filtros Avanzados</CardTitle>
-            </div>
+              Filtros Avanzados
+            </CardTitle>
             {hasActiveFilters && (
-              <Button variant="ghost" size="sm" onClick={clearFilters}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearFilters}
+                className="h-8 px-2"
+              >
                 <X className="h-4 w-4 mr-1" />
                 Limpiar filtros
               </Button>
@@ -354,15 +326,15 @@ export default function Documentos() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Tipo</label>
+            <div>
+              <label className="text-sm font-medium mb-2 block">Tipo</label>
               <Select value={filterTipo} onValueChange={setFilterTipo}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Todos los tipos" />
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos los tipos</SelectItem>
-                  {TIPOS_DOCUMENTO.map(tipo => (
+                  {TIPOS_DOCUMENTO.map((tipo) => (
                     <SelectItem key={tipo} value={tipo}>
                       {tipo}
                     </SelectItem>
@@ -371,15 +343,15 @@ export default function Documentos() {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Cliente</label>
+            <div>
+              <label className="text-sm font-medium mb-2 block">Cliente</label>
               <Select value={filterCliente} onValueChange={setFilterCliente}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Todos los clientes" />
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos los clientes</SelectItem>
-                  {clientesUnicos.map(cliente => (
+                  {clientesUnicos.map((cliente) => (
                     <SelectItem key={cliente} value={cliente}>
                       {cliente}
                     </SelectItem>
@@ -388,15 +360,15 @@ export default function Documentos() {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Expediente</label>
+            <div>
+              <label className="text-sm font-medium mb-2 block">Expediente</label>
               <Select value={filterExpediente} onValueChange={setFilterExpediente}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Todos los expedientes" />
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos los expedientes</SelectItem>
-                  {expedientesUnicos.map(exp => (
+                  {expedientesUnicos.map((exp) => (
                     <SelectItem key={exp} value={exp}>
                       {exp}
                     </SelectItem>
@@ -405,19 +377,16 @@ export default function Documentos() {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Estado</label>
+            <div>
+              <label className="text-sm font-medium mb-2 block">Estado</label>
               <Select value={filterEstado} onValueChange={setFilterEstado}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Todos los estados" />
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos los estados</SelectItem>
-                  {ESTADOS_DOCUMENTO.map(estado => (
-                    <SelectItem key={estado} value={estado}>
-                      {estado}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="Activo">Activo</SelectItem>
+                  <SelectItem value="Inactivo">Inactivo</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -425,159 +394,141 @@ export default function Documentos() {
         </CardContent>
       </Card>
 
+      {/* Tabla */}
       <Card>
         <CardHeader>
-          <CardTitle>Documentos registrados</CardTitle>
-          <CardDescription>
-            {totalResults} documento{totalResults !== 1 ? 's' : ''} encontrado{totalResults !== 1 ? 's' : ''}
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <CardTitle>Listado de Documentos</CardTitle>
+            <TableControls
+              search={searchTerm}
+              onSearchChange={setSearchTerm}
+              pageSize={pageSize}
+              onPageSizeChange={setPageSize}
+              totalResults={totalResults}
+              currentPageResults={pageData.length}
+            />
+          </div>
         </CardHeader>
         <CardContent>
-          <TableControls
-            search={search}
-            onSearchChange={setSearch}
-            pageSize={pageSize}
-            onPageSizeChange={setPageSize}
-            totalResults={totalResults}
-            currentPageResults={pageData.length}
-          />
-
-          {isLoading ? (
-            <div className="flex justify-center items-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : pageData.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              {search || hasActiveFilters
-                ? 'No se encontraron documentos con los criterios de búsqueda'
-                : 'No hay documentos registrados'}
+          {documentosFiltrados.length === 0 ? (
+            <div className="text-center py-12">
+              <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No hay documentos</h3>
+              <p className="text-muted-foreground mb-4">
+                {hasActiveFilters
+                  ? 'No se encontraron documentos con los filtros aplicados'
+                  : 'Comienza creando tu primer documento'}
+              </p>
+              {hasActiveFilters ? (
+                <Button variant="outline" onClick={clearFilters}>
+                  Limpiar filtros
+                </Button>
+              ) : (
+                <Button onClick={() => setIsDialogOpen(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Crear Documento
+                </Button>
+              )}
             </div>
           ) : (
             <>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[40px]"></TableHead>
-                    <TableHeaderCell
-                      field="nombreOriginal"
-                      label="Nombre"
-                      sortable
-                      currentSortField={sortField}
-                      currentSortOrder={sortOrder}
-                      onSort={handleSort}
-                    />
-                    <TableHeaderCell
-                      field="tipo"
-                      label="Tipo"
-                      sortable
-                      currentSortField={sortField}
-                      currentSortOrder={sortOrder}
-                      onSort={handleSort}
-                    />
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Expediente</TableHead>
-                    <TableHeaderCell
-                      field="tamanoKB"
-                      label="Tamaño"
-                      sortable
-                      currentSortField={sortField}
-                      currentSortOrder={sortOrder}
-                      onSort={handleSort}
-                    />
-                    <TableHeaderCell
-                      field="created"
-                      label="Fecha"
-                      sortable
-                      currentSortField={sortField}
-                      currentSortOrder={sortOrder}
-                      onSort={handleSort}
-                    />
-                    <TableHead>Estado</TableHead>
-                    <TableHead>Versión</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pageData.map((doc) => (
-                    <TableRow key={doc.objectId}>
-                      <TableCell>
-                        {getFileIcon(doc.extension)}
-                      </TableCell>
-                      <TableCell className="font-medium max-w-[200px] truncate">
-                        {doc.nombreOriginal}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={getTipoBadge(doc.tipo)}>
-                          {doc.tipo}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {doc.relacionClientes?.nombre || 'N/A'}
-                      </TableCell>
-                      <TableCell>
-                        {doc.relacionExpedientes?.folioExpediente || doc.expedienteFolio || 'N/A'}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {formatFileSize(doc.tamanoKB)}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {new Date(doc.created).toLocaleDateString('es-MX')}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={getEstadoBadge(doc.estadoDocumento)}>
-                          {doc.estadoDocumento}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        v{doc.version}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleView(doc)}
-                            title="Ver documento"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDownload(doc)}
-                            title="Descargar"
-                          >
-                            <Download className="h-4 w-4" />
-                          </Button>
-                          {doc.estadoDocumento === 'Activo' && (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleEdit(doc)}
-                                title="Editar"
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setDeletingDocumento(doc)}
-                                title="Eliminar"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      </TableCell>
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHeaderCell<Documento>
+                        field="nombreArchivo"
+                        label="Nombre Archivo"
+                        sortable
+                        currentSortField={sortField}
+                        currentSortOrder={sortOrder}
+                        onSort={handleSort}
+                      />
+                      <TableHeaderCell<Documento>
+                        field="tipo"
+                        label="Tipo"
+                        sortable
+                        currentSortField={sortField}
+                        currentSortOrder={sortOrder}
+                        onSort={handleSort}
+                      />
+                      <TableHead>Expediente</TableHead>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead>Tamaño</TableHead>
+                      <TableHead>Versión</TableHead>
+                      <TableHead>Estado</TableHead>
+                      <TableHead>Fecha</TableHead>
+                      <TableHead className="text-right">Acciones</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {pageData.map((doc) => (
+                      <TableRow key={doc.objectId}>
+                        <TableCell className="font-medium">
+                          {doc.nombreOriginal || doc.nombreArchivo}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{doc.tipo}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          {doc.relacionExpedientes?.folioExpediente || (
+                            <span className="text-muted-foreground">Sin expediente</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {doc.relacionExpedientes?.relacionUsuarios?.nombre || (
+                            <span className="text-muted-foreground">Sin cliente</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {formatearTamano(doc.tamanoKB)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">v{doc.version}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={getEstadoColor(doc.estadoDocumento)}>
+                            {doc.estadoDocumento}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {new Date(doc.created).toLocaleDateString('es-MX')}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setViewingDocumento(doc)}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleEdit(doc)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setDeletingDocumento(doc)}
+                              disabled={doc.estadoDocumento === 'Inactivo'}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
 
-              {totalPages > 1 && (
-                <div className="flex justify-center gap-2 mt-4">
+              {/* Paginación */}
+              {totalResults > pageSize && (
+                <div className="flex items-center justify-center gap-2 mt-4">
                   <Button
                     variant="outline"
                     size="sm"
@@ -586,14 +537,14 @@ export default function Documentos() {
                   >
                     Anterior
                   </Button>
-                  <span className="flex items-center px-4 text-sm">
-                    Página {page} de {totalPages}
+                  <span className="text-sm text-muted-foreground">
+                    Página {page} de {Math.ceil(totalResults / pageSize)}
                   </span>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setPage(page + 1)}
-                    disabled={page === totalPages}
+                    disabled={page >= Math.ceil(totalResults / pageSize)}
                   >
                     Siguiente
                   </Button>
@@ -604,122 +555,45 @@ export default function Documentos() {
         </CardContent>
       </Card>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-2xl">
+      {/* Dialogs */}
+      <Dialog open={isDialogOpen} onOpenChange={handleDialogClose}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {editingDocumento ? 'Editar documento' : 'Subir nuevo documento'}
+              {editingDocumento ? 'Editar Documento' : 'Nuevo Documento'}
             </DialogTitle>
-            <DialogDescription>
-              {editingDocumento
-                ? 'Modifique los datos del documento o reemplace el archivo para crear una nueva versión'
-                : 'Complete los datos y seleccione el archivo a subir'}
-            </DialogDescription>
           </DialogHeader>
           <DocumentoForm
             documento={editingDocumento}
-            onSuccess={handleFormSuccess}
-            onCancel={() => setIsDialogOpen(false)}
+            onSuccess={handleSuccess}
+            onCancel={handleDialogClose}
           />
         </DialogContent>
       </Dialog>
 
+      <DocumentoDetailModal
+        documento={viewingDocumento}
+        isOpen={!!viewingDocumento}
+        onClose={() => setViewingDocumento(null)}
+      />
+
       <AlertDialog open={!!deletingDocumento} onOpenChange={() => setDeletingDocumento(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar documento?</AlertDialogTitle>
+            <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
             <AlertDialogDescription>
-              El documento será marcado como "Eliminado" pero se mantendrá en el sistema para
-              auditoría. Esta acción no puede deshacerse.
+              Esta acción cambiará el estado del documento a "Inactivo". El archivo
+              permanecerá en el sistema pero no estará disponible.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>Eliminar</AlertDialogAction>
+            <AlertDialogAction onClick={handleDelete}>
+              Continuar
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      <Dialog open={!!viewingDocumento} onOpenChange={() => setViewingDocumento(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh]">
-          <DialogHeader>
-            <DialogTitle>{viewingDocumento?.nombreOriginal}</DialogTitle>
-            <DialogDescription>
-              <div className="grid grid-cols-2 gap-4 mt-4 text-sm">
-                <div>
-                  <span className="font-medium">Tipo:</span> {viewingDocumento?.tipo}
-                </div>
-                <div>
-                  <span className="font-medium">Cliente:</span>{' '}
-                  {viewingDocumento?.relacionClientes?.nombre || 'N/A'}
-                </div>
-                <div>
-                  <span className="font-medium">Expediente:</span>{' '}
-                  {viewingDocumento?.relacionExpedientes?.folioExpediente || 'N/A'}
-                </div>
-                <div>
-                  <span className="font-medium">Tamaño:</span>{' '}
-                  {viewingDocumento ? formatFileSize(viewingDocumento.tamanoKB) : ''}
-                </div>
-                <div>
-                  <span className="font-medium">Versión:</span> v{viewingDocumento?.version}
-                </div>
-                <div>
-                  <span className="font-medium">Estado:</span> {viewingDocumento?.estadoDocumento}
-                </div>
-                <div>
-                  <span className="font-medium">Fecha de creación:</span>{' '}
-                  {viewingDocumento ? new Date(viewingDocumento.created).toLocaleString('es-MX') : ''}
-                </div>
-                <div>
-                  <span className="font-medium">Última modificación:</span>{' '}
-                  {viewingDocumento ? new Date(viewingDocumento.updated).toLocaleString('es-MX') : ''}
-                </div>
-                {viewingDocumento?.relacionUsers?.email && (
-                  <div className="col-span-2">
-                    <span className="font-medium">Cargado por:</span>{' '}
-                    {viewingDocumento.relacionUsers.email}
-                  </div>
-                )}
-                {viewingDocumento?.observaciones && (
-                  <div className="col-span-2">
-                    <span className="font-medium">Observaciones:</span>{' '}
-                    {viewingDocumento.observaciones}
-                  </div>
-                )}
-              </div>
-            </DialogDescription>
-          </DialogHeader>
-          <div className="mt-4">
-            {viewingDocumento?.extension === 'pdf' ? (
-              <iframe
-                src={viewingDocumento.url}
-                className="w-full h-[60vh] border rounded"
-                title="Vista previa PDF"
-              />
-            ) : ['jpg', 'jpeg', 'png'].includes(viewingDocumento?.extension || '') ? (
-              <img
-                src={viewingDocumento?.url}
-                alt={viewingDocumento?.nombreOriginal}
-                className="w-full h-auto max-h-[60vh] object-contain border rounded"
-              />
-            ) : (
-              <div className="text-center py-8 text-muted-foreground">
-                <File className="h-12 w-12 mx-auto mb-2" />
-                <p>Vista previa no disponible para este tipo de archivo</p>
-                <Button
-                  variant="outline"
-                  className="mt-4"
-                  onClick={() => viewingDocumento && handleDownload(viewingDocumento)}
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  Descargar archivo
-                </Button>
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
