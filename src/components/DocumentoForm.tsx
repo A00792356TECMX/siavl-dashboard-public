@@ -26,7 +26,6 @@ import { Loader2, Upload, File } from 'lucide-react';
 const documentoSchema = z.object({
   tipo: z.string().min(1, 'Tipo de documento requerido'),
   relacionExpedientes: z.string().min(1, 'Expediente requerido'),
-  relacionClientes: z.string().min(1, 'Cliente requerido'),
   observaciones: z.string().optional(),
 });
 
@@ -81,7 +80,6 @@ export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormP
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [expedientes, setExpedientes] = useState<Expediente[]>([]);
-  const [clientes, setClientes] = useState<Cliente[]>([]);
   const [clientesMap, setClientesMap] = useState<Map<string, Cliente>>(new Map());
   const [loadingData, setLoadingData] = useState(true);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -93,7 +91,6 @@ export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormP
     defaultValues: {
       tipo: documento?.tipo || '',
       relacionExpedientes: documento?.relacionExpedientes?.objectId || '',
-      relacionClientes: documento?.relacionClientes?.objectId || '',
       observaciones: documento?.observaciones || '',
     },
   });
@@ -144,7 +141,6 @@ export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormP
       });
 
       setExpedientes(expedientesConAdeudo);
-      setClientes(clientesData);
       setClientesMap(clientesById);
     } catch (error) {
       toast({
@@ -252,6 +248,9 @@ export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormP
         e => e.objectId === data.relacionExpedientes
       );
 
+      // Obtener el cliente del expediente seleccionado
+      const clienteDelExpediente = expedienteSeleccionado?.relacionUsuarios || '';
+
       if (!nombreArchivo || selectedFile) {
         const timestamp = new Date().getTime();
         nombreArchivo = `${data.tipo}_${expedienteSeleccionado?.folioExpediente || 'DOC'}_${timestamp}`;
@@ -269,7 +268,7 @@ export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormP
         expedienteFolio: expedienteSeleccionado?.folioExpediente || '',
         observaciones: data.observaciones || '',
         relacionExpedientes: data.relacionExpedientes,
-        relacionClientes: data.relacionClientes,
+        relacionClientes: clienteDelExpediente, // Cliente del expediente
       };
 
       if (documento && !selectedFile) {
@@ -416,37 +415,9 @@ export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormP
                 </SelectContent>
               </Select>
               <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="relacionClientes"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>
-                Cliente <span className="text-destructive">*</span>
-              </FormLabel>
-              <Select
-                onValueChange={field.onChange}
-                defaultValue={field.value}
-                disabled={loadingData || isLoading}
-              >
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccione un cliente" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {clientes.map((cliente) => (
-                    <SelectItem key={cliente.objectId} value={cliente.objectId}>
-                      {cliente.nombre}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <FormMessage />
+              <p className="text-xs text-muted-foreground mt-1">
+                El cliente se asignará automáticamente según el expediente seleccionado
+              </p>
             </FormItem>
           )}
         />
