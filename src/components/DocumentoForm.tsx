@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -19,9 +19,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Upload, File } from 'lucide-react';
+import { Loader2, AlertCircle, Upload } from 'lucide-react';
+import { 
+  calcularAdeudo, 
+  formatearMoneda, 
+  calcularSiguienteVersion,
+  validarArchivo 
+} from '@/utils/documentoHelpers';
 
 const documentoSchema = z.object({
   tipo: z.string().min(1, 'Tipo de documento requerido'),
@@ -34,27 +41,20 @@ type DocumentoFormData = z.infer<typeof documentoSchema>;
 interface Expediente {
   objectId: string;
   folioExpediente: string;
-  cliente: string;
-  lote: string;
-  relacionUsuarios?: string;
-  relacionLotes?: string;
-  montoPorPagar?: number;
-}
-
-interface Cliente {
-  objectId: string;
-  nombre: string;
-}
-
-interface Lote {
-  objectId: string;
-  numeroLote: string;
-  precio: number;
+  relacionUsuarios?: {
+    objectId: string;
+    nombre: string;
+  };
+  relacionLotes?: {
+    precio: number;
+  };
 }
 
 interface Pago {
   monto: number;
-  folioExpediente: string;
+  relacionExpedientes?: {
+    objectId: string;
+  };
 }
 
 interface DocumentoFormProps {
@@ -73,17 +73,16 @@ const TIPOS_DOCUMENTO = [
   'Otro',
 ];
 
-const MAX_FILE_SIZE_MB = 10;
-const ALLOWED_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png'];
-
 export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormProps) {
   const [isLoading, setIsLoading] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
   const [expedientes, setExpedientes] = useState<Expediente[]>([]);
-  const [clientesMap, setClientesMap] = useState<Map<string, Cliente>>(new Map());
+  const [adeudosMap, setAdeudosMap] = useState<Map<string, number>>(new Map());
   const [loadingData, setLoadingData] = useState(true);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [existingFileUrl, setExistingFileUrl] = useState<string>('');
+  const [version, setVersion] = useState<number>(1);
+  const [allDocumentos, setAllDocumentos] = useState<any[]>([]);
+  
   const { toast } = useToast();
 
   const form = useForm<DocumentoFormData>({
@@ -95,57 +94,62 @@ export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormP
     },
   });
 
+  const selectedExpedienteId = form.watch('relacionExpedientes');
+
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (documento?.url) {
+      setExistingFileUrl(documento.url);
+      setVersion(documento.version || 1);
+    }
+  }, [documento]);
+
+  useEffect(() => {
+    if (selectedExpedienteId && allDocumentos.length > 0) {
+      const nextVersion = calcularSiguienteVersion(allDocumentos, selectedExpedienteId);
+      setVersion(nextVersion);
+    }
+  }, [selectedExpedienteId, allDocumentos]);
 
   const loadData = async () => {
     try {
       setLoadingData(true);
       
-      const [expedientesData, pagosData, lotesData, clientesData] = await Promise.all([
-        api.getAll<Expediente>('Expedientes').catch(() => []),
-        api.getAll<Pago>('Pagos').catch(() => []),
-        api.getAll<Lote>('Lotes').catch(() => []),
-        api.getAll<Cliente>('Usuarios').catch(() => []),
+      const [expedientesData, pagosData, documentosData] = await Promise.all([
+        api.getAll<Expediente>('Expedientes', {
+          loadRelations: 'relacionUsuarios,relacionLotes'
+        }).catch(() => []),
+        api.getAll<Pago>('Pagos', {
+          loadRelations: 'relacionExpedientes'
+        }).catch(() => []),
+        api.getAll<any>('Documentos').catch(() => []),
       ]);
 
-      // Mapear clientes por objectId para búsqueda rápida
-      const clientesById = new Map<string, Cliente>();
-      clientesData.forEach((cliente) => {
-        clientesById.set(cliente.objectId, cliente);
-      });
-
-      // Mapear precios de lotes por numeroLote
-      const preciosPorLote = new Map<string, number>();
-      lotesData.forEach((lote) => {
-        preciosPorLote.set(lote.numeroLote, lote.precio || 0);
-      });
+      setAllDocumentos(documentosData);
 
       // Calcular adeudo para cada expediente
-      const expedientesConAdeudo = expedientesData.map(exp => {
-        // Calcular pagos realizados para este expediente
+      const adeudos = new Map<string, number>();
+      expedientesData.forEach(exp => {
+        const precioLote = exp.relacionLotes?.precio || 0;
         const pagosFiltrados = pagosData.filter(
-          p => p.folioExpediente === exp.folioExpediente
+          p => p.relacionExpedientes?.objectId === exp.objectId
         );
         const montoPagado = pagosFiltrados.reduce((sum, p) => sum + (p.monto || 0), 0);
-        
-        // Obtener precio del lote
-        const precioLote = preciosPorLote.get(exp.lote) || 0;
-        const adeudo = Math.max(0, precioLote - montoPagado);
-
-        return {
-          ...exp,
-          montoPorPagar: adeudo,
-        };
+        const adeudo = calcularAdeudo(precioLote, montoPagado);
+        adeudos.set(exp.objectId, adeudo);
       });
 
-      setExpedientes(expedientesConAdeudo);
-      setClientesMap(clientesById);
+      setExpedientes(expedientesData);
+      setAdeudosMap(adeudos);
+      
     } catch (error) {
+      console.error('Error al cargar datos:', error);
       toast({
         title: 'Error',
-        description: 'Error al cargar datos',
+        description: 'No se pudieron cargar los datos necesarios',
         variant: 'destructive',
       });
     } finally {
@@ -153,283 +157,198 @@ export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormP
     }
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const sizeInMB = file.size / (1024 * 1024);
-    if (sizeInMB > MAX_FILE_SIZE_MB) {
-      toast({
-        title: 'Error',
-        description: `El archivo no debe superar los ${MAX_FILE_SIZE_MB}MB`,
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    const extension = file.name.split('.').pop()?.toLowerCase();
-    if (!extension || !ALLOWED_EXTENSIONS.includes(extension)) {
-      toast({
-        title: 'Error',
-        description: `Solo se permiten archivos: ${ALLOWED_EXTENSIONS.join(', ').toUpperCase()}`,
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setSelectedFile(file);
-  };
-
   const uploadFile = async (file: File): Promise<string> => {
     const formData = new FormData();
     formData.append('file', file);
 
-    try {
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/files`,
-        {
-          method: 'POST',
-          headers: {
-            'user-token': localStorage.getItem('user-token') || '',
-          },
-          body: formData,
-        }
-      );
+    const userToken = localStorage.getItem('user-token');
+    const appId = import.meta.env.VITE_BACKENDLESS_APP_ID;
+    const apiKey = import.meta.env.VITE_BACKENDLESS_API_KEY;
 
-      if (!response.ok) {
-        throw new Error('Error al subir archivo');
+    const response = await fetch(
+      `https://api.backendless.com/${appId}/${apiKey}/files/documentos/${file.name}`,
+      {
+        method: 'POST',
+        headers: {
+          'user-token': userToken || '',
+        },
+        body: formData,
       }
+    );
 
-      const data = await response.json();
-      return data.fileURL;
-    } catch (error) {
+    if (!response.ok) {
       throw new Error('Error al subir el archivo');
     }
+
+    const data = await response.json();
+    return data.fileURL;
   };
 
   const onSubmit = async (data: DocumentoFormData) => {
-    if (!documento && !selectedFile) {
-      toast({
-        title: 'Error',
-        description: 'Debe seleccionar un archivo',
-        variant: 'destructive',
-      });
-      return;
-    }
-
     try {
       setIsLoading(true);
-      let fileUrl = documento?.url;
-      let nombreOriginal = documento?.nombreOriginal;
-      let nombreArchivo = documento?.nombreArchivo;
-      let extension = documento?.extension;
-      let tamanoKB = documento?.tamanoKB;
-      let version = documento?.version || 1;
 
+      // Validar archivo solo si es creación o si se cambió el archivo
+      if (!documento && !selectedFile) {
+        toast({
+          title: 'Error',
+          description: 'Debes seleccionar un archivo',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      let fileUrl = existingFileUrl;
+      let fileData: any = {};
+
+      // Subir archivo solo si hay uno nuevo
       if (selectedFile) {
-        setIsUploading(true);
-        fileUrl = await uploadFile(selectedFile);
-        setIsUploading(false);
-
-        nombreOriginal = selectedFile.name;
-        extension = selectedFile.name.split('.').pop()?.toLowerCase() || '';
-        tamanoKB = Math.round(selectedFile.size / 1024);
-        
-        if (documento) {
-          version = (documento.version || 1) + 1;
-          
-          await api.update('Documentos', documento.objectId, {
-            estadoDocumento: 'Reemplazado',
+        const validacion = validarArchivo(selectedFile);
+        if (!validacion.valido) {
+          toast({
+            title: 'Error',
+            description: validacion.mensaje,
+            variant: 'destructive',
           });
+          return;
+        }
+
+        toast({
+          title: 'Subiendo archivo...',
+          description: 'Por favor espera',
+        });
+
+        fileUrl = await uploadFile(selectedFile);
+        
+        fileData = {
+          archivo: fileUrl,
+          nombreArchivo: selectedFile.name,
+          nombreOriginal: selectedFile.name,
+          extension: selectedFile.name.split('.').pop() || '',
+          tamanoKB: Math.round(selectedFile.size / 1024),
+          url: fileUrl,
+        };
+
+        // Si es edición y se cambió el archivo, incrementar versión
+        if (documento) {
+          fileData.version = (documento.version || 1) + 1;
         }
       }
 
       const expedienteSeleccionado = expedientes.find(
-        e => e.objectId === data.relacionExpedientes
+        exp => exp.objectId === data.relacionExpedientes
       );
 
-      // Obtener el cliente del expediente seleccionado
-      const clienteDelExpediente = expedienteSeleccionado?.relacionUsuarios || '';
-
-      if (!nombreArchivo || selectedFile) {
-        const timestamp = new Date().getTime();
-        nombreArchivo = `${data.tipo}_${expedienteSeleccionado?.folioExpediente || 'DOC'}_${timestamp}`;
-      }
-
       const documentoData = {
-        nombreArchivo,
-        nombreOriginal,
         tipo: data.tipo,
-        extension,
-        tamanoKB,
-        estadoDocumento: documento && selectedFile ? 'Activo' : (documento?.estadoDocumento || 'Activo'),
-        version,
-        url: fileUrl,
+        estadoDocumento: 'Activo',
         expedienteFolio: expedienteSeleccionado?.folioExpediente || '',
         observaciones: data.observaciones || '',
-        relacionExpedientes: data.relacionExpedientes,
-        relacionClientes: clienteDelExpediente, // Cliente del expediente
+        version: documento ? (selectedFile ? fileData.version : documento.version) : version,
+        ...fileData,
       };
 
-      if (documento && !selectedFile) {
+      if (documento) {
         await api.update('Documentos', documento.objectId, documentoData);
         toast({
           title: 'Éxito',
           description: 'Documento actualizado correctamente',
         });
       } else {
-        await api.create('Documentos', documentoData);
+        const nuevoDocumento: any = await api.create('Documentos', documentoData);
+        
+        // Crear relación con expediente
+        await fetch(
+          `https://api.backendless.com/${import.meta.env.VITE_BACKENDLESS_APP_ID}/${import.meta.env.VITE_BACKENDLESS_API_KEY}/data/Documentos/${nuevoDocumento.objectId}/relacionExpedientes`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'user-token': localStorage.getItem('user-token') || '',
+            },
+            body: JSON.stringify([data.relacionExpedientes]),
+          }
+        );
+
         toast({
           title: 'Éxito',
-          description: selectedFile && documento 
-            ? 'Nueva versión creada correctamente' 
-            : 'Documento subido correctamente',
+          description: 'Documento creado correctamente',
         });
       }
 
       onSuccess();
-    } catch (error: any) {
+    } catch (error) {
+      console.error('Error al guardar documento:', error);
       toast({
         title: 'Error',
-        description: error.message || 'Error al guardar el documento',
+        description: 'No se pudo guardar el documento',
         variant: 'destructive',
       });
     } finally {
       setIsLoading(false);
-      setIsUploading(false);
     }
   };
 
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const validacion = validarArchivo(file);
+      if (!validacion.valido) {
+        toast({
+          title: 'Error',
+          description: validacion.mensaje,
+          variant: 'destructive',
+        });
+        return;
+      }
+      setSelectedFile(file);
+    }
+  };
+
+  if (loadingData) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-        {!documento && (
-          <div className="space-y-2">
-            <label className="text-sm font-medium">
-              Archivo <span className="text-destructive">*</span>
-            </label>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isLoading}
-                className="w-full"
-              >
-                <Upload className="mr-2 h-4 w-4" />
-                {selectedFile ? selectedFile.name : 'Seleccionar archivo'}
-              </Button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                onChange={handleFileChange}
-                className="hidden"
-                accept=".pdf,.jpg,.jpeg,.png"
-              />
-            </div>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        {/* Archivo */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium">
+            Archivo {!documento && <span className="text-destructive">*</span>}
+          </label>
+          <div className="border-2 border-dashed rounded-lg p-4">
+            <input
+              type="file"
+              onChange={handleFileChange}
+              accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+              className="w-full"
+              disabled={isLoading}
+            />
             {selectedFile && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <File className="h-4 w-4" />
-                <span>
-                  {selectedFile.name} ({Math.round(selectedFile.size / 1024)} KB)
-                </span>
-              </div>
-            )}
-            <p className="text-xs text-muted-foreground">
-              Formatos permitidos: PDF, JPG, PNG (máx. {MAX_FILE_SIZE_MB}MB)
-            </p>
-          </div>
-        )}
-
-        {documento && (
-          <div className="space-y-2">
-            <label className="text-sm font-medium">
-              Reemplazar archivo (opcional)
-            </label>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isLoading}
-                className="w-full"
-              >
-                <Upload className="mr-2 h-4 w-4" />
-                {selectedFile ? selectedFile.name : 'Seleccionar nuevo archivo'}
-              </Button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                onChange={handleFileChange}
-                className="hidden"
-                accept=".pdf,.jpg,.jpeg,.png"
-              />
-            </div>
-            {selectedFile && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <File className="h-4 w-4" />
-                <span>
-                  {selectedFile.name} ({Math.round(selectedFile.size / 1024)} KB)
-                </span>
-              </div>
-            )}
-            <p className="text-xs text-muted-foreground">
-              Si selecciona un archivo nuevo, se creará una nueva versión
-            </p>
-          </div>
-        )}
-
-        <FormField
-          control={form.control}
-          name="relacionExpedientes"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>
-                Expediente <span className="text-destructive">*</span>
-              </FormLabel>
-              <Select
-                onValueChange={field.onChange}
-                defaultValue={field.value}
-                disabled={loadingData || isLoading}
-              >
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccione un expediente" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {expedientes.map((exp) => {
-                    // Obtener el nombre del cliente usando el mapa
-                    const cliente = exp.relacionUsuarios 
-                      ? clientesMap.get(exp.relacionUsuarios) 
-                      : null;
-                    const nombreCliente = cliente?.nombre || exp.cliente || 'Sin cliente';
-                    
-                    return (
-                      <SelectItem key={exp.objectId} value={exp.objectId}>
-                        {exp.folioExpediente} – {nombreCliente}{' '}
-                        (Adeudo: ${(exp.montoPorPagar || 0).toLocaleString()})
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-              <FormMessage />
-              <p className="text-xs text-muted-foreground mt-1">
-                El cliente se asignará automáticamente según el expediente seleccionado
+              <p className="text-sm text-muted-foreground mt-2">
+                Archivo seleccionado: {selectedFile.name}
               </p>
-            </FormItem>
-          )}
-        />
+            )}
+            {existingFileUrl && !selectedFile && (
+              <p className="text-sm text-muted-foreground mt-2">
+                Archivo actual: <a href={existingFileUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Ver archivo</a>
+              </p>
+            )}
+          </div>
+        </div>
 
+        {/* Tipo de Documento */}
         <FormField
           control={form.control}
           name="tipo"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>
-                Tipo de documento <span className="text-destructive">*</span>
-              </FormLabel>
+              <FormLabel>Tipo de Documento *</FormLabel>
               <Select
                 onValueChange={field.onChange}
                 defaultValue={field.value}
@@ -437,7 +356,7 @@ export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormP
               >
                 <FormControl>
                   <SelectTrigger>
-                    <SelectValue placeholder="Seleccione un tipo" />
+                    <SelectValue placeholder="Selecciona el tipo" />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
@@ -453,17 +372,82 @@ export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormP
           )}
         />
 
+        {/* Expediente */}
+        <FormField
+          control={form.control}
+          name="relacionExpedientes"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Expediente *</FormLabel>
+              <Select
+                onValueChange={field.onChange}
+                defaultValue={field.value}
+                disabled={isLoading || !!documento}
+              >
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona un expediente" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {expedientes.length === 0 ? (
+                    <div className="p-4 text-center text-sm text-muted-foreground">
+                      <AlertCircle className="h-4 w-4 mx-auto mb-2" />
+                      No hay expedientes disponibles
+                    </div>
+                  ) : (
+                    expedientes.map((exp) => {
+                      const adeudo = adeudosMap.get(exp.objectId) || 0;
+                      return (
+                        <SelectItem key={exp.objectId} value={exp.objectId}>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{exp.folioExpediente}</span>
+                            <span className="text-muted-foreground">–</span>
+                            <span>{exp.relacionUsuarios?.nombre || 'Sin cliente'}</span>
+                            <Badge variant={adeudo > 0 ? 'destructive' : 'default'} className="ml-2">
+                              Adeudo: {formatearMoneda(adeudo)}
+                            </Badge>
+                          </div>
+                        </SelectItem>
+                      );
+                    })
+                  )}
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        {/* Versión (solo lectura) */}
+        {selectedExpedienteId && (
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Versión</label>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-base px-4 py-2">
+                Versión {version}
+              </Badge>
+              {version > 1 && (
+                <span className="text-sm text-muted-foreground">
+                  (Este expediente ya tiene {version - 1} documento(s) previo(s))
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Observaciones */}
         <FormField
           control={form.control}
           name="observaciones"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Observaciones (opcional)</FormLabel>
+              <FormLabel>Observaciones</FormLabel>
               <FormControl>
                 <Textarea
-                  placeholder="Notas adicionales sobre el documento..."
-                  className="resize-none"
                   {...field}
+                  placeholder="Notas adicionales sobre el documento..."
+                  className="min-h-[100px] resize-none"
                   disabled={isLoading}
                 />
               </FormControl>
@@ -472,18 +456,25 @@ export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormP
           )}
         />
 
-        <div className="flex justify-end gap-2 pt-4">
+        {/* Botones */}
+        <div className="flex justify-end gap-3">
           <Button
             type="button"
             variant="outline"
             onClick={onCancel}
-            disabled={isLoading || isUploading}
+            disabled={isLoading}
           >
             Cancelar
           </Button>
-          <Button type="submit" disabled={isLoading || isUploading}>
-            {(isLoading || isUploading) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {isUploading ? 'Subiendo archivo...' : documento ? 'Guardar cambios' : 'Subir documento'}
+          <Button type="submit" disabled={isLoading}>
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Guardando...
+              </>
+            ) : (
+              <>{documento ? 'Actualizar' : 'Crear'} Documento</>
+            )}
           </Button>
         </div>
       </form>
