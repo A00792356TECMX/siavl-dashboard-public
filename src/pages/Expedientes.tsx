@@ -118,10 +118,18 @@ export default function Expedientes() {
     return pagosData.get(folioExpediente) || 0;
   };
 
-  const getMontoPorPagar = (folioExpediente: string, lote: string): number => {
-    const precioLote = lotesData.get(lote) || 0;
-    const montoPagado = getMontoPagado(folioExpediente);
-    return precioLote - montoPagado;
+  const getPrecioLote = (expediente: Expediente): number => {
+    // Try to get price from relacionLotes (objectId) first
+    if (expediente.relacionLotes) {
+      const lote = lotesMap.get(expediente.relacionLotes);
+      return lote?.precio || 0;
+    }
+    // Fallback to lote (numeroLote string)
+    else if (expediente.lote) {
+      return lotesData.get(expediente.lote) || 0;
+    }
+
+    return 0;
   };
 
   const handleDelete = async (id: string) => {
@@ -242,7 +250,7 @@ export default function Expedientes() {
                       className="text-right"
                     />
                     <TableHeaderCell<Expediente>
-                      label="Monto por Pagar"
+                      label="Precio Total"
                       className="text-right"
                     />
                     <TableHeaderCell<Expediente>
@@ -262,7 +270,7 @@ export default function Expedientes() {
                 <TableBody>
                   {pageData.map((expediente) => {
                     const montoPagado = getMontoPagado(expediente.folioExpediente);
-                    const montoPorPagar = getMontoPorPagar(expediente.folioExpediente, expediente.lote);
+                    const precioLote = getPrecioLote(expediente);
                     
                     // Get related cliente and lote data
                     const cliente = expediente.relacionUsuarios 
@@ -288,8 +296,8 @@ export default function Expedientes() {
                         <TableCell className="text-right font-medium text-green-600">
                           ${montoPagado.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </TableCell>
-                        <TableCell className="text-right font-medium text-orange-600">
-                          ${montoPorPagar.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <TableCell className="text-right font-medium text-blue-600">
+                          ${precioLote.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </TableCell>
                         <TableCell>
                           {expediente.created

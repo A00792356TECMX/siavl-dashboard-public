@@ -25,13 +25,11 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { PDFUploader } from '@/components/PDFUploader';
 import { Badge } from '@/components/ui/badge';
-import { 
-  calcularEstadoCLG, 
-  calcularAdeudo, 
-  formatearMoneda, 
+import {
+  calcularEstadoCLG,
   calcularSiguienteVersion,
   validarFechasCLG,
-  fechaATimestamp 
+  fechaATimestamp
 } from '@/utils/clgHelpers';
 
 const clgSchema = z.object({
@@ -49,20 +47,7 @@ interface Expediente {
   objectId: string;
   folioExpediente: string;
   relacionUsuarios?: string;
-  lote?: string;
   cliente?: string;
-}
-
-interface Pago {
-  objectId: string;
-  folioExpediente: string;
-  monto: number;
-}
-
-interface Lote {
-  objectId: string;
-  numeroLote: string;
-  precio: number;
 }
 
 interface Cliente {
@@ -84,11 +69,9 @@ interface CLGFormProps {
 
 export function CLGForm({ certificado, onSuccess, onCancel }: CLGFormProps) {
   const [isLoading, setIsLoading] = useState(false);
-  const [expedientes, setExpedientes] = useState<Expediente[]>([]);
   const [expedientesConInfo, setExpedientesConInfo] = useState<Array<{
     expediente: Expediente;
     cliente: string;
-    adeudo: number;
   }>>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -154,12 +137,10 @@ export function CLGForm({ certificado, onSuccess, onCancel }: CLGFormProps) {
       setLoadingData(true);
       setErrorCarga('');
 
-      const [expedientesData, pagosData, lotesData, clientesData] = await Promise.all([
-        api.getAll<Expediente>('Expedientes', { 
+      const [expedientesData, clientesData] = await Promise.all([
+        api.getAll<Expediente>('Expedientes', {
           where: 'activo = true',
         }).catch(() => []),
-        api.getAll<Pago>('Pagos').catch(() => []),
-        api.getAll<Lote>('Lotes').catch(() => []),
         api.getAll<Cliente>('Usuarios').catch(() => []),
       ]);
 
@@ -169,39 +150,23 @@ export function CLGForm({ certificado, onSuccess, onCancel }: CLGFormProps) {
         return;
       }
 
-      // Crear mapas para búsqueda rápida
-      const lotesById = new Map<string, Lote>();
-      lotesData.forEach(l => lotesById.set(l.numeroLote, l));
-      
+      // Crear mapa para búsqueda rápida de clientes
       const clientesById = new Map<string, Cliente>();
       clientesData.forEach(c => clientesById.set(c.objectId, c));
 
       // Procesar expedientes con información completa
-      const expedientesConDatos = expedientesData.map(exp => {
+      const expedientesConDatos = expedientesData.map((exp: Expediente) => {
         // Obtener cliente
-        const cliente = exp.relacionUsuarios 
+        const cliente = exp.relacionUsuarios
           ? clientesById.get(exp.relacionUsuarios)?.nombre || exp.cliente || 'Sin cliente'
           : exp.cliente || 'Sin cliente';
-
-        // Obtener lote y calcular adeudo
-        const lote = exp.lote ? lotesById.get(exp.lote) : null;
-        const precioLote = lote?.precio || 0;
-
-        // Calcular pagos del expediente
-        const pagosExpediente = pagosData
-          .filter(p => p.folioExpediente === exp.folioExpediente)
-          .map(p => p.monto || 0);
-
-        const adeudo = calcularAdeudo(precioLote, pagosExpediente);
 
         return {
           expediente: exp,
           cliente,
-          adeudo,
         };
       });
 
-      setExpedientes(expedientesData);
       setExpedientesConInfo(expedientesConDatos);
     } catch (error) {
       console.error('Error al cargar datos:', error);
@@ -243,11 +208,6 @@ export function CLGForm({ certificado, onSuccess, onCancel }: CLGFormProps) {
         return;
       }
 
-      // Obtener expediente seleccionado
-      const expedienteInfo = expedientesConInfo.find(
-        e => e.expediente.objectId === data.relacionExpedientes
-      );
-
       // Calcular estado automáticamente
       const estadoCalculado = calcularEstadoCLG(data.fechaVencimiento);
 
@@ -265,40 +225,49 @@ export function CLGForm({ certificado, onSuccess, onCancel }: CLGFormProps) {
 
       // Si hay archivo nuevo, subirlo primero
       if (selectedFile) {
-        try {
-          const formData = new FormData();
-          formData.append('file', selectedFile);
+        const formData = new FormData();
+        formData.append('file', selectedFile);
 
-          const uploadResponse = await fetch(
-            'https://knowingplant-us.backendless.app/api/5D4E4322-AD40-411D-BA2E-627770DB2B73/C2FF6422-711C-449C-BB07-646A3F037CC5/files/clg',
-            {
-              method: 'POST',
-              headers: {
-                'user-token': localStorage.getItem('userToken') || '',
-              },
-              body: formData,
-            }
-          );
+        const appId = import.meta.env.VITE_BACKENDLESS_APP_ID || '5D4E4322-AD40-411D-BA2E-627770DB2B73';
+        const apiKey = import.meta.env.VITE_BACKENDLESS_API_KEY || 'C2FF6422-711C-449C-BB07-646A3F037CC5';
 
-          if (!uploadResponse.ok) {
-            throw new Error('Error al subir el archivo');
+        // Get expediente info for unique filename
+        const expedienteInfo = expedientesConInfo.find(
+          e => e.expediente.objectId === data.relacionExpedientes
+        );
+        const expedienteFolio = expedienteInfo?.expediente.folioExpediente || 'UNKNOWN';
+
+        // Create unique filename with CLG prefix: CLG_expediente_timestamp_originalname
+        const timestamp = Date.now();
+        const fileExtension = selectedFile.name.substring(selectedFile.name.lastIndexOf('.'));
+        const baseFileName = selectedFile.name.substring(0, selectedFile.name.lastIndexOf('.'));
+        const uniqueFileName = `CLG_${expedienteFolio}_${timestamp}_${baseFileName}${fileExtension}`;
+
+        const uploadResponse = await fetch(
+          `https://knowingplant-us.backendless.app/api/${appId}/${apiKey}/files/documentos/${uniqueFileName}`,
+          {
+            method: 'POST',
+            headers: {
+              'user-token': localStorage.getItem('userToken') || '',
+            },
+            body: formData,
           }
+        );
 
-          const uploadData = await uploadResponse.json();
-          payload.archivo = uploadData.fileURL || `/clg/${selectedFile.name}`;
-
+        if (!uploadResponse.ok) {
+          const errorData = await uploadResponse.json().catch(() => ({}));
+          console.error('Error al subir archivo CLG:', errorData);
           toast({
-            title: 'Archivo subido',
-            description: 'PDF cargado exitosamente',
-          });
-        } catch (uploadError) {
-          console.error('Error al subir archivo:', uploadError);
-          toast({
-            title: 'Advertencia',
-            description: 'Continuando sin subir el archivo. Verifica la configuración del servidor.',
+            title: 'Error',
+            description: errorData.message || 'No se pudo subir el archivo PDF. Verifica el archivo e intenta nuevamente.',
             variant: 'destructive',
           });
+          setIsLoading(false);
+          return;
         }
+
+        const uploadData = await uploadResponse.json();
+        payload.archivo = uploadData.fileURL;
       }
 
       // Guardar o actualizar CLG
@@ -308,16 +277,8 @@ export function CLGForm({ certificado, onSuccess, onCancel }: CLGFormProps) {
           payload.version = (certificado.version || 1) + 1;
         }
         await api.update('CLG', certificado.objectId, payload);
-        toast({
-          title: 'CLG Actualizado',
-          description: `CLG v${payload.version} actualizado exitosamente`,
-        });
       } else {
         await api.create('CLG', payload);
-        toast({
-          title: 'CLG Creado',
-          description: `CLG v${versionCalculada} creado exitosamente`,
-        });
       }
       
       onSuccess();
@@ -377,9 +338,9 @@ export function CLGForm({ certificado, onSuccess, onCancel }: CLGFormProps) {
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {expedientesConInfo.map(({ expediente, cliente, adeudo }) => (
+                  {expedientesConInfo.map(({ expediente, cliente }) => (
                     <SelectItem key={expediente.objectId} value={expediente.objectId}>
-                      {expediente.folioExpediente} – {cliente} (Adeudo: {formatearMoneda(adeudo)})
+                      {expediente.folioExpediente} – {cliente}
                     </SelectItem>
                   ))}
                 </SelectContent>

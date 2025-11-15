@@ -23,8 +23,8 @@ const expedienteSchema = z.object({
   folioExpediente: z.string().optional(),
   cliente: z.string().min(1, 'Cliente requerido'),
   lote: z.string().min(1, 'Lote requerido'),
-  relacionUsuarios: z.string().optional(),
-  relacionLotes: z.string().optional(),
+  relacionUsuarios: z.string().min(1, 'Cliente requerido'),
+  relacionLotes: z.string().min(1, 'Lote requerido'),
   observaciones: z.string().max(1000).optional(),
   activo: z.boolean().default(true),
 });
@@ -146,6 +146,8 @@ export function ExpedienteForm({ expediente, onSuccess, onCancel }: ExpedienteFo
     try {
       setIsLoading(true);
 
+      console.log('Form data received:', data);
+
       // Validate that relacionLotes is not assigned to another expediente
       if (data.relacionLotes) {
         const allExpedientes = await api.getAll('Expedientes');
@@ -169,18 +171,67 @@ export function ExpedienteForm({ expediente, onSuccess, onCancel }: ExpedienteFo
       let payload: any = {
         cliente: data.cliente,
         lote: data.lote,
+        relacionUsuarios: data.relacionUsuarios,
+        relacionLotes: data.relacionLotes,
         observaciones: data.observaciones,
         activo: data.activo,
         folioExpediente: expediente?.folioExpediente || (await generateFolio()),
       };
 
+      console.log('Saving expediente with payload:', payload);
+
+      const appId = import.meta.env.VITE_BACKENDLESS_APP_ID || '5D4E4322-AD40-411D-BA2E-627770DB2B73';
+      const apiKey = import.meta.env.VITE_BACKENDLESS_API_KEY || 'C2FF6422-711C-449C-BB07-646A3F037CC5';
+      const userToken = localStorage.getItem('userToken');
+
       if (expediente?.objectId) {
         // 🔄 Update
-        await api.update('Expedientes', expediente.objectId, payload);
+        const result = await api.update('Expedientes', expediente.objectId, payload);
+        console.log('Updated expediente:', result);
         // Success toast already shown in apiRequest
       } else {
-        // 🆕 Create
-        await api.create('Expedientes', payload);
+        // 🆕 Create - First create the expediente record
+        const result: any = await api.create('Expedientes', payload);
+        console.log('Created expediente:', result);
+
+        // Then create the relationships separately
+        if (data.relacionUsuarios) {
+          console.log('Creating relationship with usuario:', data.relacionUsuarios);
+          const usuarioResponse = await fetch(
+            `https://knowingplant-us.backendless.app/api/${appId}/${apiKey}/data/Expedientes/${result.objectId}/relacionUsuarios:Usuarios:1`,
+            {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+                'user-token': userToken || '',
+              },
+              body: JSON.stringify([data.relacionUsuarios]),
+            }
+          );
+          if (!usuarioResponse.ok) {
+            console.error('Error creating usuario relationship:', await usuarioResponse.text());
+          }
+        }
+
+        if (data.relacionLotes) {
+          console.log('Creating relationship with lote:', data.relacionLotes);
+          const loteResponse = await fetch(
+            `https://knowingplant-us.backendless.app/api/${appId}/${apiKey}/data/Expedientes/${result.objectId}/relacionLotes:Lotes:1`,
+            {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+                'user-token': userToken || '',
+              },
+              body: JSON.stringify([data.relacionLotes]),
+            }
+          );
+          if (!loteResponse.ok) {
+            console.error('Error creating lote relationship:', await loteResponse.text());
+          }
+        }
+
+        console.log('Relationships created successfully');
         // Success toast already shown in apiRequest
       }
 

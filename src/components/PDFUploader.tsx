@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Upload, File, X, AlertCircle } from 'lucide-react';
 import { validarArchivoPDF } from '@/utils/clgHelpers';
+import { validarArchivo } from '@/utils/documentoHelpers';
 import { cn } from '@/lib/utils';
 
 interface PDFUploaderProps {
@@ -10,14 +11,18 @@ interface PDFUploaderProps {
   previewUrl?: string;
   disabled?: boolean;
   required?: boolean;
+  acceptedTypes?: string; // e.g., "application/pdf" or ".pdf,.jpg,.jpeg,.png,.doc,.docx"
+  pdfOnly?: boolean; // If true, only validates PDF files
 }
 
-export function PDFUploader({ 
-  onFileSelect, 
-  currentFile, 
+export function PDFUploader({
+  onFileSelect,
+  currentFile,
   previewUrl,
   disabled = false,
-  required = false 
+  required = false,
+  acceptedTypes = "application/pdf",
+  pdfOnly = true
 }: PDFUploaderProps) {
   const [error, setError] = useState<string>('');
   const [isDragging, setIsDragging] = useState(false);
@@ -31,8 +36,9 @@ export function PDFUploader({
   };
 
   const validateAndSetFile = (file: File) => {
-    const validacion = validarArchivoPDF(file);
-    
+    // Use appropriate validation based on pdfOnly flag
+    const validacion = pdfOnly ? validarArchivoPDF(file) : validarArchivo(file);
+
     if (!validacion.valido) {
       setError(validacion.mensaje || 'Archivo inválido');
       onFileSelect(null);
@@ -79,7 +85,7 @@ export function PDFUploader({
       <input
         ref={fileInputRef}
         type="file"
-        accept="application/pdf"
+        accept={acceptedTypes}
         onChange={handleFileChange}
         className="hidden"
         disabled={disabled}
@@ -100,7 +106,7 @@ export function PDFUploader({
         >
           <Upload className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
           <p className="text-sm text-foreground mb-2">
-            Arrastra tu archivo PDF aquí o{' '}
+            Arrastra tu archivo aquí o{' '}
             <button
               type="button"
               onClick={handleButtonClick}
@@ -111,7 +117,7 @@ export function PDFUploader({
             </button>
           </p>
           <p className="text-xs text-muted-foreground">
-            Formato: PDF • Tamaño máximo: 10MB
+            {pdfOnly ? 'Formato: PDF • Tamaño máximo: 10MB' : 'Formatos: PDF, JPG, PNG, DOC, DOCX • Tamaño máximo: 10MB'}
           </p>
           {required && (
             <p className="text-xs text-destructive mt-2">
@@ -164,23 +170,33 @@ export function PDFUploader({
             </div>
           </div>
           
-          {/* Preview inline del PDF */}
-          {currentFile && (
+          {/* Preview inline del archivo */}
+          {currentFile && currentFile.type === 'application/pdf' && (
             <div className="border border-border rounded-lg overflow-hidden">
               <iframe
                 src={URL.createObjectURL(currentFile)}
                 className="w-full h-[400px]"
-                title="Vista previa del PDF"
+                title="Vista previa del archivo"
               />
             </div>
           )}
-          
+
+          {currentFile && currentFile.type.startsWith('image/') && (
+            <div className="border border-border rounded-lg overflow-hidden">
+              <img
+                src={URL.createObjectURL(currentFile)}
+                alt="Vista previa"
+                className="w-full h-auto max-h-[400px] object-contain"
+              />
+            </div>
+          )}
+
           {previewUrl && !currentFile && (
             <div className="border border-border rounded-lg overflow-hidden">
               <iframe
                 src={previewUrl}
                 className="w-full h-[400px]"
-                title="Vista previa del PDF"
+                title="Vista previa del archivo"
               />
             </div>
           )}

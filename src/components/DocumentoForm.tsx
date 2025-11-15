@@ -22,12 +22,11 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, AlertCircle, Upload } from 'lucide-react';
-import { 
-  calcularAdeudo, 
-  formatearMoneda, 
+import { Loader2, AlertCircle } from 'lucide-react';
+import { PDFUploader } from '@/components/PDFUploader';
+import {
   calcularSiguienteVersion,
-  validarArchivo 
+  validarArchivo
 } from '@/utils/documentoHelpers';
 
 const documentoSchema = z.object({
@@ -41,20 +40,13 @@ type DocumentoFormData = z.infer<typeof documentoSchema>;
 interface Expediente {
   objectId: string;
   folioExpediente: string;
-  relacionUsuarios?: {
-    objectId: string;
-    nombre: string;
-  };
-  relacionLotes?: {
-    precio: number;
-  };
+  relacionUsuarios?: string;
+  cliente?: string;
 }
 
-interface Pago {
-  monto: number;
-  relacionExpedientes?: {
-    objectId: string;
-  };
+interface Cliente {
+  objectId: string;
+  nombre: string;
 }
 
 interface DocumentoFormProps {
@@ -75,14 +67,16 @@ const TIPOS_DOCUMENTO = [
 
 export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormProps) {
   const [isLoading, setIsLoading] = useState(false);
-  const [expedientes, setExpedientes] = useState<Expediente[]>([]);
-  const [adeudosMap, setAdeudosMap] = useState<Map<string, number>>(new Map());
+  const [expedientesConInfo, setExpedientesConInfo] = useState<Array<{
+    expediente: Expediente;
+    cliente: string;
+  }>>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [existingFileUrl, setExistingFileUrl] = useState<string>('');
   const [version, setVersion] = useState<number>(1);
   const [allDocumentos, setAllDocumentos] = useState<any[]>([]);
-  
+
   const { toast } = useToast();
 
   const form = useForm<DocumentoFormData>({
@@ -101,8 +95,9 @@ export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormP
   }, []);
 
   useEffect(() => {
-    if (documento?.url) {
-      setExistingFileUrl(documento.url);
+    if (documento?.archivo) {
+      const baseUrl = 'https://knowingplant-us.backendless.app/api/5D4E4322-AD40-411D-BA2E-627770DB2B73/C2FF6422-711C-449C-BB07-646A3F037CC5';
+      setExistingFileUrl(`${baseUrl}/files${documento.archivo}`);
       setVersion(documento.version || 1);
     }
   }, [documento]);
@@ -117,34 +112,34 @@ export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormP
   const loadData = async () => {
     try {
       setLoadingData(true);
-      
-      const [expedientesData, pagosData, documentosData] = await Promise.all([
-        api.getAll<Expediente>('Expedientes', {
-          loadRelations: 'relacionUsuarios,relacionLotes'
-        }).catch(() => []),
-        api.getAll<Pago>('Pagos', {
-          loadRelations: 'relacionExpedientes'
-        }).catch(() => []),
+
+      const [expedientesData, documentosData, clientesData] = await Promise.all([
+        api.getAll<Expediente>('Expedientes').catch(() => []),
         api.getAll<any>('Documentos').catch(() => []),
+        api.getAll<Cliente>('Usuarios').catch(() => []),
       ]);
 
       setAllDocumentos(documentosData);
 
-      // Calcular adeudo para cada expediente
-      const adeudos = new Map<string, number>();
-      expedientesData.forEach(exp => {
-        const precioLote = exp.relacionLotes?.precio || 0;
-        const pagosFiltrados = pagosData.filter(
-          p => p.relacionExpedientes?.objectId === exp.objectId
-        );
-        const montoPagado = pagosFiltrados.reduce((sum, p) => sum + (p.monto || 0), 0);
-        const adeudo = calcularAdeudo(precioLote, montoPagado);
-        adeudos.set(exp.objectId, adeudo);
+      // Crear mapa para búsqueda rápida de clientes
+      const clientesById = new Map<string, Cliente>();
+      clientesData.forEach(c => clientesById.set(c.objectId, c));
+
+      // Procesar expedientes con información completa
+      const expedientesConDatos = expedientesData.map((exp: Expediente) => {
+        // Obtener cliente
+        const cliente = exp.relacionUsuarios
+          ? clientesById.get(exp.relacionUsuarios)?.nombre || exp.cliente || 'Sin cliente'
+          : exp.cliente || 'Sin cliente';
+
+        return {
+          expediente: exp,
+          cliente,
+        };
       });
 
-      setExpedientes(expedientesData);
-      setAdeudosMap(adeudos);
-      
+      setExpedientesConInfo(expedientesConDatos);
+
     } catch (error) {
       console.error('Error al cargar datos:', error);
       toast({
@@ -157,16 +152,22 @@ export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormP
     }
   };
 
-  const uploadFile = async (file: File): Promise<string> => {
+  const uploadFile = async (file: File, expedienteFolio: string): Promise<string> => {
     const formData = new FormData();
     formData.append('file', file);
 
-    const userToken = localStorage.getItem('user-token');
-    const appId = import.meta.env.VITE_BACKENDLESS_APP_ID;
-    const apiKey = import.meta.env.VITE_BACKENDLESS_API_KEY;
+    const userToken = localStorage.getItem('userToken');
+    const appId = import.meta.env.VITE_BACKENDLESS_APP_ID || '5D4E4322-AD40-411D-BA2E-627770DB2B73';
+    const apiKey = import.meta.env.VITE_BACKENDLESS_API_KEY || 'C2FF6422-711C-449C-BB07-646A3F037CC5';
+
+    // Create unique filename: expediente_timestamp_originalname
+    const timestamp = Date.now();
+    const fileExtension = file.name.substring(file.name.lastIndexOf('.'));
+    const baseFileName = file.name.substring(0, file.name.lastIndexOf('.'));
+    const uniqueFileName = `${expedienteFolio}_${timestamp}_${baseFileName}${fileExtension}`;
 
     const response = await fetch(
-      `https://api.backendless.com/${appId}/${apiKey}/files/documentos/${file.name}`,
+      `https://knowingplant-us.backendless.app/api/${appId}/${apiKey}/files/documentos/${uniqueFileName}`,
       {
         method: 'POST',
         headers: {
@@ -177,7 +178,9 @@ export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormP
     );
 
     if (!response.ok) {
-      throw new Error('Error al subir el archivo');
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Error al subir archivo:', errorData);
+      throw new Error(errorData.message || 'Error al subir el archivo');
     }
 
     const data = await response.json();
@@ -201,6 +204,20 @@ export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormP
       let fileUrl = existingFileUrl;
       let fileData: any = {};
 
+      // Obtener expediente info primero (necesario para nombre de archivo único)
+      const expedienteInfo = expedientesConInfo.find(
+        ({ expediente }) => expediente.objectId === data.relacionExpedientes
+      );
+
+      if (!expedienteInfo) {
+        toast({
+          title: 'Error',
+          description: 'Expediente no encontrado',
+          variant: 'destructive',
+        });
+        return;
+      }
+
       // Subir archivo solo si hay uno nuevo
       if (selectedFile) {
         const validacion = validarArchivo(selectedFile);
@@ -213,12 +230,7 @@ export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormP
           return;
         }
 
-        toast({
-          title: 'Subiendo archivo...',
-          description: 'Por favor espera',
-        });
-
-        fileUrl = await uploadFile(selectedFile);
+        fileUrl = await uploadFile(selectedFile, expedienteInfo.expediente.folioExpediente);
         
         fileData = {
           archivo: fileUrl,
@@ -235,14 +247,10 @@ export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormP
         }
       }
 
-      const expedienteSeleccionado = expedientes.find(
-        exp => exp.objectId === data.relacionExpedientes
-      );
-
       const documentoData = {
         tipo: data.tipo,
         estadoDocumento: 'Activo',
-        expedienteFolio: expedienteSeleccionado?.folioExpediente || '',
+        expedienteFolio: expedienteInfo?.expediente.folioExpediente || '',
         observaciones: data.observaciones || '',
         version: documento ? (selectedFile ? fileData.version : documento.version) : version,
         ...fileData,
@@ -250,38 +258,50 @@ export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormP
 
       if (documento) {
         await api.update('Documentos', documento.objectId, documentoData);
-        toast({
-          title: 'Éxito',
-          description: 'Documento actualizado correctamente',
-        });
       } else {
+        console.log('Creating document with data:', documentoData);
         const nuevoDocumento: any = await api.create('Documentos', documentoData);
-        
+        console.log('Document created:', nuevoDocumento);
+
         // Crear relación con expediente
-        await fetch(
-          `https://api.backendless.com/${import.meta.env.VITE_BACKENDLESS_APP_ID}/${import.meta.env.VITE_BACKENDLESS_API_KEY}/data/Documentos/${nuevoDocumento.objectId}/relacionExpedientes`,
+        const appId = import.meta.env.VITE_BACKENDLESS_APP_ID || '5D4E4322-AD40-411D-BA2E-627770DB2B73';
+        const apiKey = import.meta.env.VITE_BACKENDLESS_API_KEY || 'C2FF6422-711C-449C-BB07-646A3F037CC5';
+
+        console.log('Creating relationship with expediente:', data.relacionExpedientes);
+        const relationResponse = await fetch(
+          `https://knowingplant-us.backendless.app/api/${appId}/${apiKey}/data/Documentos/${nuevoDocumento.objectId}/relacionExpedientes`,
           {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'user-token': localStorage.getItem('user-token') || '',
+              'user-token': localStorage.getItem('userToken') || '',
             },
             body: JSON.stringify([data.relacionExpedientes]),
           }
         );
 
-        toast({
-          title: 'Éxito',
-          description: 'Documento creado correctamente',
-        });
+        if (!relationResponse.ok) {
+          const errorData = await relationResponse.json().catch(() => ({}));
+          console.error('Error creating relationship:', errorData);
+          throw new Error('Error al crear la relación con el expediente: ' + (errorData.message || 'Error desconocido'));
+        }
+
+        console.log('Relationship created successfully');
       }
 
       onSuccess();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error al guardar documento:', error);
+
+      // Provide more specific error message
+      let errorMessage = 'No se pudo guardar el documento';
+      if (error.message) {
+        errorMessage = error.message;
+      }
+
       toast({
         title: 'Error',
-        description: 'No se pudo guardar el documento',
+        description: errorMessage,
         variant: 'destructive',
       });
     } finally {
@@ -289,21 +309,6 @@ export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormP
     }
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const validacion = validarArchivo(file);
-      if (!validacion.valido) {
-        toast({
-          title: 'Error',
-          description: validacion.mensaje,
-          variant: 'destructive',
-        });
-        return;
-      }
-      setSelectedFile(file);
-    }
-  };
 
   if (loadingData) {
     return (
@@ -316,30 +321,25 @@ export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormP
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        {/* Archivo */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium">
+        {/* Archivo con Preview */}
+        <div>
+          <label className="text-sm font-medium mb-2 block">
             Archivo {!documento && <span className="text-destructive">*</span>}
           </label>
-          <div className="border-2 border-dashed rounded-lg p-4">
-            <input
-              type="file"
-              onChange={handleFileChange}
-              accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-              className="w-full"
-              disabled={isLoading}
-            />
-            {selectedFile && (
-              <p className="text-sm text-muted-foreground mt-2">
-                Archivo seleccionado: {selectedFile.name}
-              </p>
-            )}
-            {existingFileUrl && !selectedFile && (
-              <p className="text-sm text-muted-foreground mt-2">
-                Archivo actual: <a href={existingFileUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Ver archivo</a>
-              </p>
-            )}
-          </div>
+          <PDFUploader
+            onFileSelect={setSelectedFile}
+            currentFile={selectedFile}
+            previewUrl={existingFileUrl}
+            disabled={isLoading}
+            required={!documento}
+            acceptedTypes=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+            pdfOnly={false}
+          />
+          {documento && (
+            <p className="text-xs text-muted-foreground mt-2">
+              Subir un nuevo archivo incrementará la versión automáticamente
+            </p>
+          )}
         </div>
 
         {/* Tipo de Documento */}
@@ -390,27 +390,21 @@ export function DocumentoForm({ documento, onSuccess, onCancel }: DocumentoFormP
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {expedientes.length === 0 ? (
+                  {expedientesConInfo.length === 0 ? (
                     <div className="p-4 text-center text-sm text-muted-foreground">
                       <AlertCircle className="h-4 w-4 mx-auto mb-2" />
                       No hay expedientes disponibles
                     </div>
                   ) : (
-                    expedientes.map((exp) => {
-                      const adeudo = adeudosMap.get(exp.objectId) || 0;
-                      return (
-                        <SelectItem key={exp.objectId} value={exp.objectId}>
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{exp.folioExpediente}</span>
-                            <span className="text-muted-foreground">–</span>
-                            <span>{exp.relacionUsuarios?.nombre || 'Sin cliente'}</span>
-                            <Badge variant={adeudo > 0 ? 'destructive' : 'default'} className="ml-2">
-                              Adeudo: {formatearMoneda(adeudo)}
-                            </Badge>
-                          </div>
-                        </SelectItem>
-                      );
-                    })
+                    expedientesConInfo.map(({ expediente, cliente }) => (
+                      <SelectItem key={expediente.objectId} value={expediente.objectId}>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{expediente.folioExpediente}</span>
+                          <span className="text-muted-foreground">–</span>
+                          <span>{cliente}</span>
+                        </div>
+                      </SelectItem>
+                    ))
                   )}
                 </SelectContent>
               </Select>
