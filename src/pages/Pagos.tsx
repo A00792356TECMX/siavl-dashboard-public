@@ -18,6 +18,9 @@ import { PagoForm } from "@/components/PagoForm";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Pencil, Trash2, Plus, Loader2 } from "lucide-react";
+import { TableControls } from '@/components/TableControls';
+import { TableHeaderCell } from '@/components/TableHeader';
+import { useTableData } from '@/hooks/useTableData';
 
 interface Pago {
   objectId: string;
@@ -36,6 +39,24 @@ export default function Pagos() {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedPago, setSelectedPago] = useState<Pago | undefined>();
+
+  const {
+    pageData,
+    totalResults,
+    page,
+    pageSize,
+    totalPages,
+    setPage,
+    setPageSize,
+    search,
+    setSearch,
+    sortField,
+    sortOrder,
+    handleSort,
+  } = useTableData({
+    data: pagos,
+    searchFields: ['folioExpediente', 'metodoPago', 'moneda', 'referencia'],
+  });
 
   useEffect(() => {
     loadPagos();
@@ -109,27 +130,76 @@ export default function Pagos() {
       </div>
 
       <div className="border rounded-lg">
+        <div className="p-4">
+          <TableControls
+            search={search}
+            onSearchChange={setSearch}
+            pageSize={pageSize}
+            onPageSizeChange={setPageSize}
+            totalResults={totalResults}
+            currentPageResults={pageData.length}
+          />
+        </div>
+        
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Folio</TableHead>
-              <TableHead>Monto</TableHead>
-              <TableHead>Método</TableHead>
-              <TableHead>Moneda</TableHead>
-              <TableHead>Referencia</TableHead>
-              <TableHead className="text-right">Acciones</TableHead>
+              <TableHeaderCell<Pago>
+                field="folioExpediente"
+                label="Folio"
+                sortable
+                currentSortField={sortField}
+                currentSortOrder={sortOrder}
+                onSort={handleSort}
+              />
+              <TableHeaderCell<Pago>
+                field="monto"
+                label="Monto"
+                sortable
+                currentSortField={sortField}
+                currentSortOrder={sortOrder}
+                onSort={handleSort}
+              />
+              <TableHeaderCell<Pago>
+                field="metodoPago"
+                label="Método"
+                sortable
+                currentSortField={sortField}
+                currentSortOrder={sortOrder}
+                onSort={handleSort}
+              />
+              <TableHeaderCell<Pago>
+                field="moneda"
+                label="Moneda"
+                sortable
+                currentSortField={sortField}
+                currentSortOrder={sortOrder}
+                onSort={handleSort}
+              />
+              <TableHeaderCell<Pago>
+                field="referencia"
+                label="Referencia"
+                sortable
+                currentSortField={sortField}
+                currentSortOrder={sortOrder}
+                onSort={handleSort}
+              />
+              <TableHeaderCell<Pago>
+                label="Acciones"
+                className="text-right"
+              />
             </TableRow>
           </TableHeader>
           <TableBody>
-            {pagos.length === 0 ? (
+            {totalResults === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-center text-muted-foreground">
-                  No hay pagos registrados
+                  {pagos.length === 0 ? 'No hay pagos registrados' : 'No se encontraron resultados'}
                 </TableCell>
               </TableRow>
             ) : (
-              pagos.map((pago) => (
-                <TableRow key={pago.objectId}>
+              pageData.map((pago) => (
+                <TableRow key={pago.objectId} className="hover:bg-muted/30 transition-colors">
                   <TableCell className="font-medium">{pago.folioExpediente}</TableCell>
                   <TableCell>${pago.monto.toFixed(2)}</TableCell>
                   <TableCell>{pago.metodoPago || "N/A"}</TableCell>

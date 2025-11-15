@@ -11,6 +11,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Plus, Pencil, Trash2, Loader2 } from 'lucide-react';
+import { TableControls } from '@/components/TableControls';
+import { TableHeaderCell } from '@/components/TableHeader';
+import { useTableData } from '@/hooks/useTableData';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -29,6 +32,24 @@ interface Usuario {
 export default function Usuarios() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  
+  const {
+    pageData,
+    totalResults,
+    page,
+    pageSize,
+    totalPages,
+    setPage,
+    setPageSize,
+    search,
+    setSearch,
+    sortField,
+    sortOrder,
+    handleSort,
+  } = useTableData({
+    data: usuarios,
+    searchFields: ['email', 'name', 'telefono', 'rol'],
+  });
   const [newUser, setNewUser] = useState({
   email: '',
   name: '',
@@ -244,28 +265,61 @@ export default function Usuarios() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <TableControls
+            search={search}
+            onSearchChange={setSearch}
+            pageSize={pageSize}
+            onPageSizeChange={setPageSize}
+            totalResults={totalResults}
+            currentPageResults={pageData.length}
+          />
+
           {isLoading ? (
             <div className="flex items-center justify-center h-64">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
-          ) : usuarios.length === 0 ? (
+          ) : totalResults === 0 ? (
             <div className="flex items-center justify-center h-64 text-muted-foreground">
-              <p>No hay usuarios registrados</p>
+              <p>{usuarios.length === 0 ? 'No hay usuarios registrados' : 'No se encontraron resultados'}</p>
             </div>
           ) : (
             <div className="rounded-md border border-border">
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-muted/50">
-                    <TableHead>Email</TableHead>
-                    <TableHead>Nombre</TableHead>
-                    <TableHead>Fecha de Registro</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
+                    <TableHeaderCell<Usuario>
+                      field="email"
+                      label="Email"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Usuario>
+                      field="name"
+                      label="Nombre"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Usuario>
+                      field="created"
+                      label="Fecha de Registro"
+                      sortable
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                    <TableHeaderCell<Usuario>
+                      label="Acciones"
+                      className="text-right"
+                    />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {usuarios.map((usuario) => (
-                    <TableRow key={usuario.objectId} className="hover:bg-muted/50">
+                  {pageData.map((usuario) => (
+                    <TableRow key={usuario.objectId} className="hover:bg-muted/50 transition-colors">
                       <TableCell className="font-medium">{usuario.email}</TableCell>
                       <TableCell>{usuario.name || usuario.nombre}</TableCell>
                       <TableCell>
