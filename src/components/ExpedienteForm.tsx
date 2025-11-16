@@ -79,7 +79,10 @@ export function ExpedienteForm({ expediente, onSuccess, onCancel }: ExpedienteFo
   const loadClientes = async () => {
     try {
       setLoadingClientes(true);
-      const clientesData = await api.getAll<Cliente>('Usuarios');
+      const clientesData = await api.getAll<Cliente>('Usuarios', {
+        pageSize: '100',
+        sortBy: 'nombre asc'
+      });
       setClientes(clientesData);
     } catch (error) {
       console.error('Error loading clientes:', error);
@@ -97,8 +100,13 @@ export function ExpedienteForm({ expediente, onSuccess, onCancel }: ExpedienteFo
     try {
       setLoadingLotes(true);
       const [allLotes, allExpedientes] = await Promise.all([
-        api.getAll<Lote>('Lotes'),
-        api.getAll('Expedientes')
+        api.getAll<Lote>('Lotes', {
+          pageSize: '100',
+          sortBy: 'numeroLote asc'
+        }),
+        api.getAll('Expedientes', {
+          pageSize: '100'
+        })
       ]);
 
       // Get lotes already assigned via relacionLotes (excluding current expediente if editing)
