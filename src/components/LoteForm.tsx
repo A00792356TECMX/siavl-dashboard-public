@@ -92,23 +92,16 @@ export function LoteForm({ lote, onSuccess, onCancel }: LoteFormProps) {
 
       if (lote?.objectId) {
         await api.update('Lotes', lote.objectId, payload);
-        toast({ title: 'Éxito', description: 'Lote actualizado correctamente' });
+        // Toast is already shown by api.update in api.ts
       } else {
         await api.create('Lotes', payload);
-        toast({
-          title: 'Éxito',
-          description: `Lote ${numeroLote} creado correctamente`,
-        });
+        // Toast is already shown by api.create in api.ts
       }
 
       onSuccess();
     } catch (error) {
       console.error(error);
-      toast({
-        title: 'Error',
-        description: 'Error al guardar el lote',
-        variant: 'destructive',
-      });
+      // Error toast is already shown by api.update/api.create in api.ts
     } finally {
       setIsLoading(false);
     }

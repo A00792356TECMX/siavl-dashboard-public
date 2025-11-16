@@ -138,7 +138,19 @@ export function ExpedienteForm({ expediente, onSuccess, onCancel }: ExpedienteFo
 
   const generateFolio = async () => {
     const data = await api.getAll('Expedientes');
-    const next = data.length + 1;
+
+    // Extract all existing folio numbers
+    const folioNumbers = data
+      .map((exp: any) => {
+        const match = exp.folioExpediente?.match(/EXP-(\d+)/);
+        return match ? parseInt(match[1], 10) : 0;
+      })
+      .filter((num: number) => num > 0);
+
+    // Get the highest number and add 1
+    const maxNumber = folioNumbers.length > 0 ? Math.max(...folioNumbers) : 0;
+    const next = maxNumber + 1;
+
     return `EXP-${next.toString().padStart(4, '0')}`;
   };
 

@@ -22,8 +22,8 @@ interface Expediente {
   folioExpediente: string;
   cliente: string;
   lote: string;
-  relacionUsuarios?: string;
-  relacionLotes?: string;
+  relacionUsuarios?: string | any[];
+  relacionLotes?: string | any[];
   observaciones?: string;
   activo: boolean;
   created: string;
@@ -67,32 +67,88 @@ export default function Expedientes() {
     try {
       setIsLoading(true);
       const [expedientesData, pagosData, lotesData, clientesData] = await Promise.all([
-        api.getAll<Expediente>('Expedientes', { sortBy: 'created desc' }),
-        api.getAll<any>('Pagos'),
-        api.getAll<any>('Lotes'),
-        api.getAll<any>('Usuarios')
+        api.getAll<Expediente>('Expedientes', {
+          sortBy: 'created desc',
+          loadRelations: 'relacionLotes,relacionUsuarios',
+          relationsDepth: '1',
+          pageSize: '100'
+        }),
+        api.getAll<any>('Pagos', {
+          pageSize: '100',
+          loadRelations: 'relacionExpediente',
+          relationsDepth: '1'
+        }),
+        api.getAll<any>('Lotes', {
+          pageSize: '100'
+        }),
+        api.getAll<any>('Usuarios', {
+          pageSize: '100'
+        })
       ]);
 
-      // Calculate total paid amount per expediente (grouped by folioExpediente)
+      console.log('=== DEBUGGING EXPEDIENTES ===');
+      console.log('Total expedientes loaded:', expedientesData.length);
+      if (expedientesData.length > 0) {
+        console.log('First expediente full object:', expedientesData[0]);
+        console.log('relacionUsuarios type:', typeof expedientesData[0].relacionUsuarios);
+        console.log('relacionUsuarios value:', expedientesData[0].relacionUsuarios);
+        console.log('relacionLotes type:', typeof expedientesData[0].relacionLotes);
+        console.log('relacionLotes value:', expedientesData[0].relacionLotes);
+        console.log('cliente field:', expedientesData[0].cliente);
+        console.log('lote field:', expedientesData[0].lote);
+      }
+      console.log('Sample lote from Lotes table:', lotesData[0]);
+      console.log('Total pagos loaded:', pagosData.length);
+      if (pagosData.length > 0) {
+        console.log('First pago:', pagosData[0]);
+        console.log('First pago relacionExpediente:', pagosData[0].relacionExpediente);
+        console.log('First pago monto:', pagosData[0].monto);
+      }
+
+      // Calculate total paid amount per expediente
       const pagosPorExpediente = new Map<string, number>();
       pagosData.forEach((pago: any) => {
-        const current = pagosPorExpediente.get(pago.folioExpediente) || 0;
-        pagosPorExpediente.set(pago.folioExpediente, current + (pago.monto || 0));
+        let folioExpediente = null;
+
+        // relacionExpediente is loaded as an object with loadRelations
+        if (pago.relacionExpediente) {
+          if (typeof pago.relacionExpediente === 'object' && !Array.isArray(pago.relacionExpediente)) {
+            // Backendless loaded the relation as object
+            folioExpediente = pago.relacionExpediente.folioExpediente;
+          } else if (typeof pago.relacionExpediente === 'string') {
+            // It's a string (shouldn't happen with loadRelations, but just in case)
+            folioExpediente = pago.relacionExpediente;
+          }
+        }
+
+        if (folioExpediente) {
+          const current = pagosPorExpediente.get(folioExpediente) || 0;
+          pagosPorExpediente.set(folioExpediente, current + (pago.monto || 0));
+        }
       });
 
-      // Map lotes prices by numeroLote
+      console.log('Pagos por expediente Map:', Object.fromEntries(pagosPorExpediente));
+      console.log('=== END DEBUGGING ===');
+
+      // Map lotes prices by numeroLote (this is the ID column)
       const preciosPorLote = new Map<string, number>();
       lotesData.forEach((lote: any) => {
         preciosPorLote.set(lote.numeroLote, lote.precio || 0);
       });
 
-      // Map clientes by objectId
+      // Map clientes by nombre (this is the ID column for Usuarios)
+      const clientesByNombre = new Map<string, any>();
+      clientesData.forEach((cliente: any) => {
+        clientesByNombre.set(cliente.nombre, cliente);
+      });
+
+      // Also map by objectId for backwards compatibility
       const clientesById = new Map<string, any>();
       clientesData.forEach((cliente: any) => {
         clientesById.set(cliente.objectId, cliente);
       });
 
-      // Map lotes by objectId
+      // Map lotes by objectId for backwards compatibility
       const lotesById = new Map<string, any>();
       lotesData.forEach((lote: any) => {
         lotesById.set(lote.objectId, lote);
@@ -119,14 +175,26 @@ export default function Expedientes() {
   };
 
   const getPrecioLote = (expediente: Expediente): number => {
-    // Try to get price from relacionLotes (objectId) first
+    // New expedientes: relacionLotes is a relation to Lotes table
+    // Backendless returns 1:1 relations as objects directly (not arrays)
     if (expediente.relacionLotes) {
-      const lote = lotesMap.get(expediente.relacionLotes);
-      return lote?.precio || 0;
+      // Check if it's an object (loaded relation from Backendless)
+      if (typeof expediente.relacionLotes === 'object' && !Array.isArray(expediente.relacionLotes)) {
+        const loteObj = expediente.relacionLotes as any;
+        return loteObj.precio || 0;
+      }
+
+      // Or a string reference to numeroLote
+      if (typeof expediente.relacionLotes === 'string') {
+        return lotesData.get(expediente.relacionLotes) || 0;
+      }
     }
-    // Fallback to lote (numeroLote string)
-    else if (expediente.lote) {
-      return lotesData.get(expediente.lote) || 0;
+
+    // Old expedientes: fallback to lote field (string like "006 - Manzana B")
+    if (expediente.lote) {
+      // Extract just the lote number (e.g., "006" from "006 - Manzana B")
+      const loteNumber = expediente.lote.split(' ')[0];
+      return lotesData.get(loteNumber) || 0;
     }
 
     return 0;
@@ -273,25 +341,46 @@ export default function Expedientes() {
                     const precioLote = getPrecioLote(expediente);
                     
                     // Get related cliente and lote data
-                    const cliente = expediente.relacionUsuarios 
-                      ? clientesMap.get(expediente.relacionUsuarios) 
-                      : null;
-                    const lote = expediente.relacionLotes 
-                      ? lotesMap.get(expediente.relacionLotes) 
-                      : null;
+                    let clienteNombre = 'N/A';
+                    let loteDisplay = 'Sin asignar';
+
+                    // Handle relacionUsuarios (Backendless returns 1:1 relations as objects)
+                    if (expediente.relacionUsuarios) {
+                      if (typeof expediente.relacionUsuarios === 'object' && !Array.isArray(expediente.relacionUsuarios)) {
+                        // Loaded relation object from Backendless
+                        const usuario = expediente.relacionUsuarios as any;
+                        clienteNombre = usuario.nombre || 'N/A';
+                      } else if (typeof expediente.relacionUsuarios === 'string') {
+                        // String reference (fallback for old data)
+                        const cliente = clientesMap.get(expediente.relacionUsuarios);
+                        clienteNombre = cliente?.nombre || expediente.relacionUsuarios;
+                      }
+                    } else if (expediente.cliente) {
+                      // Legacy field (fallback for very old data)
+                      clienteNombre = expediente.cliente;
+                    }
+
+                    // Handle relacionLotes (Backendless returns 1:1 relations as objects)
+                    if (expediente.relacionLotes) {
+                      if (typeof expediente.relacionLotes === 'object' && !Array.isArray(expediente.relacionLotes)) {
+                        // Loaded relation object from Backendless
+                        const lote = expediente.relacionLotes as any;
+                        loteDisplay = `${lote.numeroLote} - Manzana ${lote.manzana}`;
+                      } else if (typeof expediente.relacionLotes === 'string') {
+                        // String reference (fallback for old data)
+                        const lote = lotesMap.get(expediente.relacionLotes);
+                        loteDisplay = lote ? `${lote.numeroLote} - Manzana ${lote.manzana}` : expediente.relacionLotes;
+                      }
+                    } else if (expediente.lote) {
+                      // Legacy field (fallback for very old data)
+                      loteDisplay = expediente.lote;
+                    }
 
                     return (
                       <TableRow key={expediente.objectId} className="hover:bg-muted/30 transition-colors">
                         <TableCell className="font-medium">{expediente.folioExpediente}</TableCell>
-                        <TableCell>
-                          {cliente ? cliente.nombre : (expediente.cliente || 'N/A')}
-                        </TableCell>
-                        <TableCell>
-                          {lote 
-                            ? `${lote.numeroLote} - Manzana ${lote.manzana}` 
-                            : (expediente.lote || 'Sin asignar')
-                          }
-                        </TableCell>
+                        <TableCell>{clienteNombre}</TableCell>
+                        <TableCell>{loteDisplay}</TableCell>
                         <TableCell>{expediente.activo ? '✅ Activo' : '❌ Inactivo'}</TableCell>
                         <TableCell className="text-right font-medium text-green-600">
                           ${montoPagado.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

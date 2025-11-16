@@ -24,20 +24,16 @@ import { useTableData } from '@/hooks/useTableData';
 
 interface Pago {
   objectId: string;
-  folioExpediente: string;
   monto: number;
   metodoPago: string;
   moneda: string;
   referencia?: string;
   observaciones?: string;
   created?: number;
-  relacionExpedientes?: {
+  relacionExpediente?: {
     objectId: string;
     folioExpediente: string;
-    relacionUsuarios?: {
-      nombre: string;
-    };
-  };
+  } | string; // Can be object (with loadRelations) or string
 }
 
 export default function Pagos() {
@@ -62,7 +58,7 @@ export default function Pagos() {
     handleSort,
   } = useTableData({
     data: pagos,
-    searchFields: ['folioExpediente', 'metodoPago', 'moneda'],
+    searchFields: ['referencia', 'metodoPago', 'moneda'],
   });
 
   useEffect(() => {
@@ -73,8 +69,19 @@ export default function Pagos() {
     try {
       setLoading(true);
       const data = await api.getAll<Pago>("Pagos", {
-        loadRelations: "relacionExpedientes,relacionExpedientes.relacionUsuarios"
+        loadRelations: "relacionExpediente",
+        relationsDepth: "1",
+        pageSize: "100", // Load up to 100 records
+        sortBy: "created desc" // Most recent first
       });
+      console.log('=== DEBUGGING PAGOS ===');
+      console.log('Total pagos loaded:', data.length);
+      if (data.length > 0) {
+        console.log('First pago:', data[0]);
+        console.log('relacionExpediente type:', typeof data[0].relacionExpediente);
+        console.log('relacionExpediente value:', data[0].relacionExpediente);
+      }
+      console.log('=== END DEBUGGING ===');
       setPagos(data);
     } catch {
       toast({
@@ -154,14 +161,14 @@ export default function Pagos() {
           <TableHeader>
             <TableRow>
               <TableHeaderCell<Pago>
-                field="folioExpediente"
-                label="Folio"
+                field="referencia"
+                label="Referencia"
                 sortable
                 currentSortField={sortField}
                 currentSortOrder={sortOrder}
                 onSort={handleSort}
               />
-              <TableHead>Cliente</TableHead>
+              <TableHead>Folio Expediente</TableHead>
               <TableHeaderCell<Pago>
                 field="monto"
                 label="Monto"
@@ -200,37 +207,53 @@ export default function Pagos() {
                 </TableCell>
               </TableRow>
             ) : (
-              pageData.map((pago) => (
-                <TableRow key={pago.objectId} className="hover:bg-muted/30 transition-colors">
-                  <TableCell className="font-medium">
-                    {pago.relacionExpedientes?.folioExpediente || pago.folioExpediente}
-                  </TableCell>
-                  <TableCell>
-                    {pago.relacionExpedientes?.relacionUsuarios?.nombre || "-"}
-                  </TableCell>
-                  <TableCell>${pago.monto.toFixed(2)}</TableCell>
-                  <TableCell>{pago.metodoPago || "N/A"}</TableCell>
-                  <TableCell>{pago.moneda || "N/A"}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => openDialog(pago)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(pago.objectId)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
+              pageData.map((pago) => {
+                // Get folioExpediente from relacionExpediente
+                let folioExpediente = 'N/A';
+                if (pago.relacionExpediente) {
+                  if (typeof pago.relacionExpediente === 'object' && !Array.isArray(pago.relacionExpediente)) {
+                    // Loaded relation object
+                    folioExpediente = pago.relacionExpediente.folioExpediente || 'N/A';
+                  } else if (typeof pago.relacionExpediente === 'string') {
+                    // String value (folioExpediente)
+                    folioExpediente = pago.relacionExpediente;
+                  }
+                }
+
+                return (
+                  <TableRow key={pago.objectId} className="hover:bg-muted/30 transition-colors">
+                    <TableCell className="font-medium">
+                      {pago.referencia || 'N/A'}
+                    </TableCell>
+                    <TableCell>
+                      {folioExpediente}
+                    </TableCell>
+                    <TableCell className="font-medium text-green-600">
+                      ${pago.monto?.toFixed(2) || '0.00'}
+                    </TableCell>
+                    <TableCell>{pago.metodoPago || "N/A"}</TableCell>
+                    <TableCell>{pago.moneda || "N/A"}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openDialog(pago)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDelete(pago.objectId)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>

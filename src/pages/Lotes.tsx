@@ -82,17 +82,10 @@ export default function Lotes() {
 
     try {
       await api.delete('Lotes', id);
-      toast({
-        title: 'Éxito',
-        description: 'Lote eliminado correctamente',
-      });
+      // Toast is already shown by api.delete in api.ts
       loadLotes();
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Error al eliminar el lote',
-        variant: 'destructive',
-      });
+      // Error toast is already shown by api.delete in api.ts
     }
   };
 

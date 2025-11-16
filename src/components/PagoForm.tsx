@@ -26,7 +26,7 @@ import { useToast } from "@/hooks/use-toast";
 
 // ✅ Schema aligned with Backendless
 const pagoSchema = z.object({
-  relacionExpedientes: z.string().min(1, "Expediente requerido"),
+  relacionExpediente: z.string().min(1, "Expediente requerido"),
   monto: z
     .string()
     .min(1, "Monto requerido")
@@ -48,7 +48,12 @@ interface Expediente {
   lote: string;
   relacionUsuarios?: {
     nombre: string;
-  };
+  } | string;
+  relacionLotes?: {
+    numeroLote: string;
+    manzana: string;
+    precio: number;
+  } | string;
 }
 
 interface PagoFormProps {
@@ -67,7 +72,7 @@ export function PagoForm({ pago, onSuccess, onCancel }: PagoFormProps) {
   const form = useForm<PagoFormData>({
     resolver: zodResolver(pagoSchema),
     defaultValues: {
-      relacionExpedientes: pago?.relacionExpedientes?.objectId || pago?.relacionExpedientes || "",
+      relacionExpediente: pago?.relacionExpediente || "",
       monto: pago?.monto?.toString() || "",
       metodoPago: pago?.metodoPago || "",
       moneda: pago?.moneda || "",
@@ -84,45 +89,65 @@ export function PagoForm({ pago, onSuccess, onCancel }: PagoFormProps) {
       setLoadingData(true);
 
       // Load all necessary data in parallel
-      const [expedientesData, pagosData, lotesData] = await Promise.all([
-        api.getAll<Expediente>("Expedientes", { loadRelations: "relacionUsuarios" }),
-        api.getAll<any>("Pagos"),
-        api.getAll<any>("Lotes")
+      const [expedientesData, pagosData] = await Promise.all([
+        api.getAll<Expediente>("Expedientes", {
+          loadRelations: "relacionUsuarios,relacionLotes",
+          relationsDepth: "1",
+          pageSize: "100", // Load up to 100 expedientes
+          sortBy: "created desc"
+        }),
+        api.getAll<any>("Pagos", {
+          pageSize: "100"
+        })
       ]);
 
-      // Calculate total paid per expediente
-      const pagosPorExpediente = new Map<string, number>();
+      console.log('=== DEBUGGING PAGO FORM ===');
+      console.log('Total expedientes loaded:', expedientesData.length);
+      console.log('Expedientes folios:', expedientesData.map(e => e.folioExpediente));
+      console.log('Total pagos loaded:', pagosData.length);
+      console.log('=== END DEBUGGING ===');
+
+      // Calculate total paid per expediente (using folioExpediente)
+      const pagosPorFolio = new Map<string, number>();
       pagosData.forEach((p: any) => {
         // Exclude current pago if editing
         if (pago?.objectId && p.objectId === pago.objectId) return;
-        
-        const current = pagosPorExpediente.get(p.folioExpediente) || 0;
-        pagosPorExpediente.set(p.folioExpediente, current + (p.monto || 0));
-      });
 
-      // Map lote prices by numeroLote
-      const preciosPorLote = new Map<string, number>();
-      lotesData.forEach((lote: any) => {
-        preciosPorLote.set(lote.numeroLote, lote.precio || 0);
+        // relacionExpediente contains the folioExpediente value
+        if (p.relacionExpediente) {
+          const current = pagosPorFolio.get(p.relacionExpediente) || 0;
+          pagosPorFolio.set(p.relacionExpediente, current + (p.monto || 0));
+        }
       });
 
       // Calculate adeudo for each expediente
-      const adeudoPorExpediente = new Map<string, number>();
+      const adeudoPorFolio = new Map<string, number>();
       expedientesData.forEach((exp: Expediente) => {
-        const precioLote = preciosPorLote.get(exp.lote) || 0;
-        const montoPagado = pagosPorExpediente.get(exp.folioExpediente) || 0;
+        // Get precio from relacionLotes (Backendless returns 1:1 as object)
+        let precioLote = 0;
+        if ((exp as any).relacionLotes && typeof (exp as any).relacionLotes === 'object' && !Array.isArray((exp as any).relacionLotes)) {
+          const loteObj = (exp as any).relacionLotes;
+          precioLote = loteObj.precio || 0;
+        }
+
+        const montoPagado = pagosPorFolio.get(exp.folioExpediente) || 0;
         const adeudo = precioLote - montoPagado;
-        adeudoPorExpediente.set(exp.objectId, adeudo);
+        adeudoPorFolio.set(exp.folioExpediente, adeudo);
+
+        // Debug first expediente
+        if (exp === expedientesData[0]) {
+          console.log('First expediente adeudo calculation:');
+          console.log('  folioExpediente:', exp.folioExpediente);
+          console.log('  relacionLotes:', (exp as any).relacionLotes);
+          console.log('  precioLote:', precioLote);
+          console.log('  montoPagado:', montoPagado);
+          console.log('  adeudo:', adeudo);
+        }
       });
 
-      // Filter expedientes with pending debt OR the current one being edited
-      const expedientesConAdeudo = expedientesData.filter((exp: Expediente) => {
-        const adeudo = adeudoPorExpediente.get(exp.objectId) || 0;
-        return adeudo > 0 || (pago?.relacionExpedientes?.objectId === exp.objectId);
-      });
-
-      setExpedientes(expedientesConAdeudo);
-      setAdeudoMap(adeudoPorExpediente);
+      // Show all expedientes (not just those with pending debt)
+      setExpedientes(expedientesData);
+      setAdeudoMap(adeudoPorFolio);
     } catch {
       toast({
         title: "Error",
@@ -161,8 +186,8 @@ export function PagoForm({ pago, onSuccess, onCancel }: PagoFormProps) {
     try {
       setIsLoading(true);
 
-      // Find the expediente data
-      const expediente = expedientes.find((exp: Expediente) => exp.objectId === data.relacionExpedientes);
+      // Find the expediente data by folioExpediente
+      const expediente = expedientes.find((exp: Expediente) => exp.folioExpediente === data.relacionExpediente);
 
       if (!expediente) {
         toast({
@@ -174,8 +199,8 @@ export function PagoForm({ pago, onSuccess, onCancel }: PagoFormProps) {
         return;
       }
 
-      // Get the adeudo for this expediente
-      const adeudo = adeudoMap.get(expediente.objectId) || 0;
+      // Get the adeudo for this expediente using folioExpediente
+      const adeudo = adeudoMap.get(expediente.folioExpediente) || 0;
       
       // Validate amount against debt
       const nuevoMonto = parseFloat(data.monto);
@@ -193,27 +218,51 @@ export function PagoForm({ pago, onSuccess, onCancel }: PagoFormProps) {
       const referencia = pago?.objectId ? pago.referencia : await generateReferencia();
 
       const payload = {
-        folioExpediente: expediente.folioExpediente,
         monto: nuevoMonto,
         metodoPago: data.metodoPago,
         moneda: data.moneda,
         referencia: referencia,
-        relacionExpedientes: data.relacionExpedientes,
         observaciones: data.observaciones || "",
       };
 
       if (pago?.objectId) {
+        // Update existing pago
         await api.update("Pagos", pago.objectId, payload);
       } else {
-        await api.create("Pagos", payload);
+        // Create new pago first
+        const newPago: any = await api.create("Pagos", payload);
+
+        // Then create relationship with expediente
+        // Need to use the expediente's objectId, not folioExpediente
+        const appId = import.meta.env.VITE_BACKENDLESS_APP_ID || '5D4E4322-AD40-411D-BA2E-627770DB2B73';
+        const apiKey = import.meta.env.VITE_BACKENDLESS_API_KEY || 'C2FF6422-711C-449C-BB07-646A3F037CC5';
+        const userToken = localStorage.getItem('userToken');
+
+        console.log('Creating relationship relacionExpediente with expediente objectId:', expediente.objectId);
+
+        // Use :1 for 1:1 relationship, pass objectId not folioExpediente
+        const relationResponse = await fetch(
+          `https://knowingplant-us.backendless.app/api/${appId}/${apiKey}/data/Pagos/${newPago.objectId}/relacionExpediente:Expedientes:1`,
+          {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'user-token': userToken || '',
+            },
+            body: JSON.stringify([expediente.objectId]),
+          }
+        );
+
+        if (!relationResponse.ok) {
+          const errorData = await relationResponse.json().catch(() => ({}));
+          console.error('Error creating relationship:', errorData);
+          throw new Error('Error al crear la relación con el expediente: ' + (errorData.message || 'Error desconocido'));
+        }
+
+        console.log('Relationship relacionExpediente created successfully');
       }
 
-      toast({
-        title: "Éxito",
-        description: "Pago registrado correctamente",
-        className: "bg-green-50 border-green-200",
-      });
-
+      // Toast is already shown by api.create/api.update in api.ts
       onSuccess();
     } catch (err: any) {
       console.error("❌ Error guardando pago:", err);
@@ -242,7 +291,7 @@ export function PagoForm({ pago, onSuccess, onCancel }: PagoFormProps) {
           {/* Expediente Selector */}
           <FormField
             control={form.control}
-            name="relacionExpedientes"
+            name="relacionExpediente"
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Expediente</FormLabel>
@@ -264,10 +313,10 @@ export function PagoForm({ pago, onSuccess, onCancel }: PagoFormProps) {
                     ) : (
                       expedientes.map((exp: Expediente) => {
                         const clienteNombre = exp.relacionUsuarios?.nombre || exp.cliente || "Sin cliente";
-                        const adeudo = adeudoMap.get(exp.objectId) || 0;
+                        const adeudo = adeudoMap.get(exp.folioExpediente) || 0;
 
                         return (
-                          <SelectItem key={exp.objectId} value={exp.objectId}>
+                          <SelectItem key={exp.objectId} value={exp.folioExpediente}>
                             {exp.folioExpediente} – {clienteNombre} (Adeudo: ${adeudo.toLocaleString('es-MX', { minimumFractionDigits: 2 })})
                           </SelectItem>
                         );

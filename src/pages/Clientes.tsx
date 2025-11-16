@@ -161,11 +161,11 @@ export default function Clientes() {
           telefono: newCliente.telefono || '',
           activo: newCliente.activo,
         });
-        toast.success('Cliente actualizado correctamente');
+        // Toast is already shown by api.update in api.ts
       } else {
         // 🆕 Create new cliente - Validate email doesn't exist
         const emailExists = await checkEmailExists(newCliente.email);
-        
+
         if (emailExists) {
           toast.error('El correo ya existe');
           setEmailError('El correo ya existe');
@@ -179,7 +179,7 @@ export default function Clientes() {
           telefono: newCliente.telefono || '',
           activo: newCliente.activo,
         });
-        toast.success('Cliente creado correctamente');
+        // Toast is already shown by api.create in api.ts
       }
 
       await loadClientes();
