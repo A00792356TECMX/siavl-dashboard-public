@@ -80,7 +80,10 @@ export default function Clientes() {
   const loadClientes = async () => {
     try {
       setIsLoading(true);
-      const data = await api.getAll<Cliente>('Usuarios');
+      const data = await api.getAll<Cliente>('Usuarios', {
+        pageSize: '100',
+        sortBy: 'created desc'
+      });
       setClientes(data);
     } catch (error) {
       console.error('Error loading clientes:', error);
