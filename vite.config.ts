@@ -6,6 +6,7 @@ import { componentTagger } from "lovable-tagger";
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   // Configuración para GitHub Pages
+  // Nota: El nombre del repositorio debe coincidir exactamente
   base: mode === "production" ? "/siavl-dashboard/" : "/",
   server: {
     host: "::",
